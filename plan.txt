@@ -1,0 +1,84 @@
+1. Quiescence Search (Öncelik: Çok Yüksek 🚨)
+Videoda Dustmite'ın da üstüne basarak söylediği en önemli şey: "Q-Search olmadan motor kördür, ama Q-Search'ü yanlış yazarsan motor felç olur."
+
+Şu anki motorun Horizon Effect (Ufuk Etkisi) yaşıyor çünkü derinlik bittiğinde veziri istekte mi diye bakmadan pozisyonu değerlendiriyor.
+
+Videodan Gelen Altın Tavsiye: Başlangıç aşamasında Q-Search içine şah çekme (checks) hamlelerini ASLA dahil etme. Sadece "Captures" (Taş yeme) ve "Promotions" (Vezir çıkma) hamlelerini üret. Aksi takdirde ağacın (node explosion) milyarlara fırlar.
+
+C++ Quiescence Mantığı (Stand Pat ile):
+
+C++
+
+int quiescence(ChessBoard& board, int alpha, int beta, int ply) {
+    // 1. Stand Pat (Sakin Kalma) Değerlendirmesi
+    int stand_pat = evaluate(board);
+    
+    // Eğer sadece durarak bile beta'yı aşıyorsak (Fail High), rakip bu duruma girmemize izin vermez.
+    if (stand_pat >= beta) return beta;
+    
+    // Alpha'yı yükseltebiliyorsak yükselt (Güvenli alt sınır)
+    if (alpha < stand_pat) alpha = stand_pat;
+
+    std::vector<Move> captureMoves;
+    board.generate_captures(captureMoves); // SADECE TAŞ YEMELER!
+    
+    // Move Ordering (MVV-LVA burada hayati önem taşır)
+    sort_moves(captureMoves, board);
+
+    for (Move move : captureMoves) {
+        board.make_move(move);
+        int score = -quiescence(board, -beta, -alpha, ply + 1);
+        board.undo_move(move);
+
+        if (score >= beta) return beta; // Beta Cutoff
+        if (score > alpha) alpha = score; // Yeni en iyi hamle
+    }
+    return alpha;
+}
+2. Transposition Table & Zobrist Hashing (Öncelik: Yüksek 🧠)
+Videoda polyglot formatından ve hash'lerin nasıl güncellendiğinden uzun uzun bahsediliyor. C++'ta Zobrist Hashing, Java'ya göre çok daha performanslıdır çünkü doğrudan 64-bit integer XOR (^=) operasyonları işlemci seviyesinde çalışır.
+
+Yol haritanda belirttiğin gibi bu şart. Her hamlede sıfırdan tahtayı hashlemek yerine, sadece değişen taşları XOR'lamalısın.
+
+C++ Pratiği:
+Motor başlarken std::mt19937_64 (64-bit Mersenne Twister) ile sabit random sayılar üret:
+
+C++
+
+uint64_t pieceKeys[2][6][64]; // [Renk][Taş Tipi][Kare]
+uint64_t sideKey; // Sıra siyahtaysa XOR'lanacak
+uint64_t castleKeys[16]; // Rok hakları (0-15 maskesi)
+uint64_t enPassantKeys[64]; // En passant karesi
+make_move fonksiyonunda taşı kaldırdığın kareden XOR ile sil, koyduğun kareye XOR ile ekle. Bu sana anında board.zobristKey verecek.
+
+3. Move Ordering: Killer Moves & History Heuristic (Öncelik: Yüksek 🎯)
+MVV-LVA halihazırda iyi ama "Quiet" (Taş yemeyen) hamleleri sıralayamadığın için arama ağacın şişiyor. Videoda bahsedilen sıralama mantığı tam olarak şu hiyerarşide olmalı:
+
+TT Move: Transposition Table'dan gelen en iyi hamle (Anında Beta Cutoff yaptırır).
+
+Good Captures: MVV-LVA skorları yüksek olan yemeler.
+
+Killer Moves: Aynı derinlikte (ply) daha önce Beta Cutoff yaptırmış taş yemeyen hamleler.
+
+History Heuristic: Genel oyun geçmişinde çok fazla Beta Cutoff yaptırmış hamleler.
+
+Killer Move C++ Yapısı:
+
+C++
+
+// Her derinlik için 2 adet Killer Move tutmak standarttır.
+Move killerMoves[2][MAX_PLY]; 
+
+// Eğer bir "Quiet" hamle Beta cutoff yaptırırsa:
+if (!move.is_capture()) {
+    killerMoves[1][ply] = killerMoves[0][ply]; // Eski 1.yi 2.ye kaydır
+    killerMoves[0][ply] = move; // Yeni 1.yi ata
+}
+4. Değerlendirme (Evaluation Refinement) (Öncelik: Orta 🛡️)
+Videodaki Eval kısmı, bitboard kullanarak Pawn yapısını ve Şah güvenliğini hesaplamak üzerine kurulu. C++'ta bitboard kullanmak bir rüyadır.
+
+Pawn Structure (Duble/İzole Piyonlar):
+Artık tahtayı kare kare gezmene gerek yok. __builtin_popcountll fonksiyonu bir 64-bit sayının içindeki 1'leri donanımsal olarak sayar (O(1) sürede). Bir sütundaki piyonların popcount'u 1'den büyükse onlar duble piyondur.
+
+King Safety (Pawn Shield):
+Videoda Dustmite'ın anlattığı King Zone mantığı: Şahın önündeki 3 kare (veya 2 rank) maskesini al. Kendi piyon maskenle AND (&) işlemi yap. popcount 3 ise şah güvendedir, 1 ise tehlikededir, ceza (- penalty) ver.

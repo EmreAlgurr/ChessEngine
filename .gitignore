@@ -1,0 +1,18 @@
+# Executables
+*.exe
+*.o
+*.obj
+
+# Build directories
+build/
+bin/
+obj/
+
+# IDE files
+.vscode/
+.vs/
+.idea/
+
+# Temp files
+test_output.txt
+*.log

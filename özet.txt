@@ -1,0 +1,43 @@
+1. Veri Yapıları ve Hafıza (C++ Felsefesi)
+Videodaki en temel vurgulardan biri, C++'ın gücünü doğru kullanmak üzerine kurulu:
+
+Heap Allocation Yasaktır (new/malloc): Arama ağacı saniyede milyonlarca kez çağrılır. Her şeyi Stack üzerinde tutmalı veya motor başlarken global std::vector / array olarak pre-allocate etmelisin.
+
+Hamleleri Sıkıştırma (16-bit Moves): Bir hamleyi devasa bir struct (from, to, piece, captured) olarak tutma. Hamleleri 16-bit integer içine bit-shift ile göm (Örn: ilk 6 bit 'from', sonraki 6 bit 'to', son 4 bit 'flag'). Kopyalama maliyetini sıfıra indirir.
+
+Packed Eval (32-bit Sihri): Tahtayı değerlendirirken Midgame (Oyun Ortası) ve Endgame (Oyun Sonu) skorlarını ayrı ayrı toplamak yerine, tek bir 32-bit integer'da tut. Alt 16 biti Midgame, üst 16 biti Endgame olsun. İkisini tek bir + işlemiyle toplayıp çıkarabilirsin (Muazzam bir işlemci tasarrufu sağlar).
+
+2. Hamle Üretimi (Move Generation)
+Magic Bitboards: Kale, Fil ve Vezir'in gidebileceği kareleri (diğer taşların arkasına geçememe durumunu) döngülerle hesaplamak motoru öldürür. "Magic Numbers" denilen bir hash tekniğiyle, tahtadaki taş dizilimine göre gidebilecekleri yerleri O(1) sürede diziden (array) çekecek bir altyapı kurmalısın.
+
+Pseudo-Legal Yaklaşımı: Kurallara tam uygun (şahın tehdit altında kalmadığı) hamleleri üretmekle vakit kaybetme. Önce tahtadan dışarı çıkmayan tüm "sözde yasal" (pseudo-legal) hamleleri üret. Hamleyi yap (make_move), eğer kendi şahın tehdit altındaysa hamleyi geri al (undo_move) ve geç. Bu yöntem çok daha hızlıdır.
+
+3. Arama Algoritması ve Agresif Budama (Search & Pruning)
+Videonun en uzun kısmı. Motorların asıl gücü saniyede baktığı düğüm sayısı değil, bakmamayı seçtiği (pruning) düğüm sayısıdır.
+
+PVS (Principal Variation Search) / Null Windows: Ağaçtaki ilk hamleyi tam pencereyle (alpha, beta) ara. Diğer tüm hamleleri sıfır pencereyle (alpha, alpha+1) ara. Amacımız diğer hamlelerin ilk hamleden daha iyi olmadığını hızlıca kanıtlamaktır. Eğer daha iyi çıkarsa, o zaman tam pencereyle tekrar ararsın.
+
+SEE (Static Exchange Evaluation): Motor bir taşı yemeden önce o karedeki tüm "al-ver" ihtimallerini hayali olarak oynar. Eğer piyonla at yiyorsan ama arkasında vezir varsa ve günün sonunda zararlı çıkıyorsan (SEE < 0), motor bu hamleyi hiç aramaz bile.
+
+Null Move Pruning (NMP): Rakibe arka arkaya 2 kere oynama hakkı ver. Eğer rakip üst üste 2 hamle yapsa bile bizim mevcut skorumuzu geçemiyorsa, o daldaki pozisyonumuz o kadar iyidir ki daha fazla derine inmeye gerek yoktur (Büyük bir hız kazandırır).
+
+Late Move Reductions (LMR): Hamle sıralaman iyi çalışıyorsa, listedeki 5. veya 6. hamleden sonrakiler muhtemelen çöp hamlelerdir. Bu hamleleri normal derinlikle (Depth-1) değil, daha sığ (Depth-2 veya -3) ara.
+
+4. Hamle Sıralaması (Move Ordering)
+Eğer en iyi hamleyi ilk sırada incelersen, Alpha-Beta Pruning ağacın geri kalan %90'ını budar.
+
+Geçmişin Cezalandırılması (History Penalty): Bir "sessiz" (taş yemeyen) hamle Beta Cutoff (daldan çıkış) yaptırırsa, o hamlenin puanını artır. Ancak asıl kritik olan; o hamleden önce denenip başarısız olan tüm sessiz hamlelerin puanını düşür. Buna History Penalty denir ve çöpleri aşağı iter.
+
+Continuation History: Sadece mevcut pozisyona değil, bir önceki hamleye karşı hangi hamlelerin iyi tepki verdiğini 2 boyutlu bir tabloda tut.
+
+5. Tahta Değerlendirmesi (Evaluation)
+King Zone (Şah Alanı): Şahın güvenliğini tüm tahtaya bakarak hesaplama. Sadece şahın etrafındaki 8 kare ve önündeki 2 karelik bölgeyi ("King Zone") referans al. Rakibin o bölgeye basan taş sayısını, senin savunan taş sayından çıkar.
+
+Gecikmeli Tembel Eval (Lazy Eval): Pozisyonun statik skoru, mesela +800 ise (vezir öndeysen), şah güvenliği veya piyon yapısı gibi ince hesaplamaları hiç yapma. Skor o kadar açıktır ki ufak detaylar sonucu değiştirmez. Doğrudan değeri döndür.
+
+6. Makine Öğrenmesi ve Tuning (İleri Seviye)
+Videonun son 4 saati, eldeki parametrelerin (bir piyon 100 mü, 95 mi değerli? Duble piyon cezası -15 mi, -20 mi?) insanın aklıyla değil makineyle bulunmasına odaklanıyor.
+
+Texel Tuning (SGD / Adam): Milyonlarca satranç FEN'ini (oyun pozisyonunu) bir veri setinden alırsın. Motorun bu tahtalara bakarak "Bu beyazın kazancıdır" şeklinde tahminler yapar. Gradient Descent mantığıyla, motor hata yaptıkça ağırlıkları (parametreleri) milim milim değiştirerek en ideal taş ve pozisyon puanlarını bulur.
+
+SPSA: Arama ağacındaki matematiksel çarpanları (örneğin LMR yaparken derinliği ne kadar kısacağının formülü) motoru kendi kendine binlerce maç yaptırarak optimize etme yöntemidir.
