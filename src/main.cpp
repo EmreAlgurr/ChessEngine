@@ -1,10 +1,18 @@
 #include "UCIEngine.h"
 #include "TerminalGame.h"
+#include "Magics.h"
+#include "Zobrist.h"
+#include "Tuning.h"
 #include <iostream>
 #include <string>
+#include <sstream>
 
 int main(int argc, char* argv[]) {
-    // Command-line argument shortcuts
+    // 1. Mandatory Engine Initialization
+    Magics::initMagics();
+    Zobrist::init();
+
+    // 2. Command-line argument shortcuts
     if (argc > 1) {
         std::string arg = argv[1];
         if (arg == "play" || arg == "p") {
@@ -21,23 +29,26 @@ int main(int argc, char* argv[]) {
             engine.run();
             return 0;
         }
+        if (arg == "tune") {
+            std::string datasetPath = (argc > 2) ? argv[2] : "quiet-labeled.epd";
+            int epochs = (argc > 3) ? std::stoi(argv[3]) : 50;
+            int threads = (argc > 4) ? std::stoi(argv[4]) : 4;
+            int maxPositions = (argc > 5) ? std::stoi(argv[5]) : 0;
+            Tuner::run(datasetPath, epochs, threads, maxPositions);
+            return 0;
+        }
     }
 
-    // No arguments: wait for the first line from stdin
-    // Tournament software (cutechess-cli, etc.) will send "uci" as the first command
+    // 3. No arguments: wait for first line from stdin
     std::string firstLine;
     if (std::getline(std::cin, firstLine)) {
-        // Trim
         while (!firstLine.empty() && (firstLine.back() == '\r' || firstLine.back() == '\n' || firstLine.back() == ' '))
             firstLine.pop_back();
         while (!firstLine.empty() && (firstLine.front() == ' '))
             firstLine.erase(firstLine.begin());
 
         if (firstLine == "uci") {
-            // Enter UCI mode - respond with identification then start the loop
             UCIEngine engine;
-            // handleUCI is called inside run() when it receives "uci", but
-            // we already consumed the first "uci" line, so respond here:
             std::cout << "id name MyEngine_CPP 1.0" << std::endl;
             std::cout << "id author Antigravity" << std::endl;
             std::cout << "uciok" << std::endl;
@@ -53,8 +64,15 @@ int main(int argc, char* argv[]) {
             game.run();
             return 0;
         }
+        if (firstLine.rfind("tune", 0) == 0) {
+            std::istringstream ss(firstLine);
+            std::string cmd, path = "quiet-labeled.epd";
+            int epochs = 50, threads = 4, maxPositions = 0;
+            ss >> cmd >> path >> epochs >> threads >> maxPositions;
+            Tuner::run(path, epochs, threads, maxPositions);
+            return 0;
+        }
 
-        // Default: play interactively
         TerminalGame game;
         game.run();
     }

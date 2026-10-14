@@ -1,8 +1,9 @@
 #pragma once
 
-#include "ChessBoard.h"
+#include "BitBoard.h"
 #include "SimpleEngine.h"
 #include <string>
+#include <vector>
 
 class UCIEngine {
 public:
@@ -10,10 +11,11 @@ public:
     void run();
 
 private:
-    ChessBoard board;
+    BoardState board;
     SimpleEngine engine;
     bool debug;
-    Color currentColor;
+    int currentColor;
+    std::vector<uint64_t> gameKeys; // oyundaki tum pozisyonlarin Zobrist anahtarlari (tekrar tespiti)
 
     void handleUCI();
     void handleDebug(const std::string& arg);
@@ -26,8 +28,7 @@ private:
     void handleQuit();
 
     void makeUCIMove(const std::string& uciMove);
-    Color getCurrentPlayerFromBoard();
-    std::string moveToUCI(const Move& move);
+    int getCurrentPlayerFromBoard();
 
     // Split a line into tokens
     static std::vector<std::string> split(const std::string& line);

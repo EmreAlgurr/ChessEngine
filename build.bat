@@ -3,26 +3,28 @@ echo ========================================
 echo   Chess Engine C++ Build Script
 echo ========================================
 
+REM Kullanim: build.bat [cikti_adi.exe]   (varsayilan: ChessEngine.exe)
+set OUT=%~1
+if "%OUT%"=="" set OUT=ChessEngine.exe
+
 where g++ >nul 2>nul
 if %ERRORLEVEL% EQU 0 (
     echo [INFO] Using g++ compiler...
-    g++ -std=c++17 -O2 -o ChessEngine.exe ^
-        src/Position.cpp ^
-        src/Move.cpp ^
-        src/Piece.cpp ^
-        src/King.cpp ^
-        src/Queen.cpp ^
-        src/Rook.cpp ^
-        src/Bishop.cpp ^
-        src/Knight.cpp ^
-        src/Pawn.cpp ^
-        src/ChessBoard.cpp ^
+    g++ -std=c++17 -O2 -o %OUT% ^
+        src/BitBoard.cpp ^
+        src/Magics.cpp ^
+        src/Zobrist.cpp ^
+        src/TranspositionTable.cpp ^
+        src/MoveGenerator.cpp ^
         src/SimpleEngine.cpp ^
+        src/EvalParams.cpp ^
+        src/Tuning.cpp ^
+        src/Book.cpp ^
         src/UCIEngine.cpp ^
         src/TerminalGame.cpp ^
         src/main.cpp
     if %ERRORLEVEL% EQU 0 (
-        echo [SUCCESS] Built ChessEngine.exe
+        echo [SUCCESS] Built %OUT%
     ) else (
         echo [ERROR] Build failed!
     )
@@ -32,23 +34,21 @@ if %ERRORLEVEL% EQU 0 (
 where cl >nul 2>nul
 if %ERRORLEVEL% EQU 0 (
     echo [INFO] Using MSVC compiler...
-    cl /std:c++17 /EHsc /O2 /Fe:ChessEngine.exe ^
-        src/Position.cpp ^
-        src/Move.cpp ^
-        src/Piece.cpp ^
-        src/King.cpp ^
-        src/Queen.cpp ^
-        src/Rook.cpp ^
-        src/Bishop.cpp ^
-        src/Knight.cpp ^
-        src/Pawn.cpp ^
-        src/ChessBoard.cpp ^
+    cl /std:c++17 /EHsc /O2 /Fe:%OUT% ^
+        src/BitBoard.cpp ^
+        src/Magics.cpp ^
+        src/MoveGenerator.cpp ^
+        src/Zobrist.cpp ^
+        src/TranspositionTable.cpp ^
         src/SimpleEngine.cpp ^
+        src/EvalParams.cpp ^
+        src/Tuning.cpp ^
+        src/Book.cpp ^
         src/UCIEngine.cpp ^
         src/TerminalGame.cpp ^
         src/main.cpp
     if %ERRORLEVEL% EQU 0 (
-        echo [SUCCESS] Built ChessEngine.exe
+        echo [SUCCESS] Built %OUT%
     ) else (
         echo [ERROR] Build failed!
     )

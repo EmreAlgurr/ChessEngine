@@ -1,9 +1,12 @@
 #include "UCIEngine.h"
+#include "Tuning.h"
+#include "Book.h"
 #include <iostream>
 #include <sstream>
 #include <cstdlib>
+#include <cctype>
 
-UCIEngine::UCIEngine() : debug(false), currentColor(Color::WHITE) {
+UCIEngine::UCIEngine() : debug(false), currentColor(WHITE_SIDE) {
     engine.setDepth(4);
     board.setFromFEN("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1");
 }
@@ -21,7 +24,6 @@ std::vector<std::string> UCIEngine::split(const std::string& line) {
 void UCIEngine::run() {
     std::string line;
     while (std::getline(std::cin, line)) {
-        // Trim
         while (!line.empty() && (line.back() == '\r' || line.back() == '\n' || line.back() == ' '))
             line.pop_back();
         while (!line.empty() && (line.front() == ' '))
@@ -53,13 +55,17 @@ void UCIEngine::run() {
         } else if (command == "quit") {
             handleQuit();
             return;
+        } else if (command == "tune") {
+            std::string datasetPath = (tokens.size() > 1) ? tokens[1] : "dataset.epd";
+            int epochs = (tokens.size() > 2) ? std::stoi(tokens[2]) : 50;
+            int threads = (tokens.size() > 3) ? std::stoi(tokens[3]) : 4;
+            int maxPositions = (tokens.size() > 4) ? std::stoi(tokens[4]) : 0;
+            Tuner::run(datasetPath, epochs, threads, maxPositions);
         } else if (command == "d" || command == "display" || command == "print") {
             board.display();
         } else if (command.length() >= 4 && std::islower(command[0]) && std::isdigit(command[1])) {
-            // Basit hamle girişi desteği (örn: e2e4)
             makeUCIMove(command);
             board.display();
-            // Motorun cevap vermesini tetikle (go depth 4 gibi)
             std::vector<std::string> goTokens = {"go", "depth", "4"};
             handleGo(goTokens);
             board.display();
@@ -74,6 +80,8 @@ void UCIEngine::run() {
 void UCIEngine::handleUCI() {
     std::cout << "id name MyEngine_CPP 1.0" << std::endl;
     std::cout << "id author Antigravity" << std::endl;
+    std::cout << "option name OwnBook type check default true" << std::endl;
+    std::cout << "option name BookFile type string default gm2001.bin" << std::endl;
     std::cout << "uciok" << std::endl;
 }
 
@@ -86,12 +94,43 @@ void UCIEngine::handleIsReady() {
 }
 
 void UCIEngine::handleSetOption(const std::vector<std::string>& tokens) {
-    // Handle engine options here if needed
+    std::string name, val;
+    bool readingName = false, readingVal = false;
+    for (size_t i = 1; i < tokens.size(); i++) {
+        if (tokens[i] == "name") {
+            readingName = true; readingVal = false;
+        } else if (tokens[i] == "value") {
+            readingName = false; readingVal = true;
+        } else {
+            if (readingName) {
+                if (!name.empty()) name += " ";
+                name += tokens[i];
+            } else if (readingVal) {
+                if (!val.empty()) val += " ";
+                val += tokens[i];
+            }
+        }
+    }
+
+    auto toLower = [](std::string s) {
+        for (char& c : s) c = std::tolower(static_cast<unsigned char>(c));
+        return s;
+    };
+
+    std::string lowerName = toLower(name);
+    if (lowerName == "ownbook") {
+        std::string lowerVal = toLower(val);
+        openingBook.setEnabled(lowerVal == "true" || lowerVal == "1");
+    } else if (lowerName == "bookfile") {
+        openingBook.open(val);
+    }
 }
 
 void UCIEngine::handleUCINewGame() {
     board.setFromFEN("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1");
-    currentColor = Color::WHITE;
+    currentColor = WHITE_SIDE;
+    gameKeys.clear();
+    gameKeys.push_back(board.zobristKey);
 }
 
 void UCIEngine::handlePosition(const std::vector<std::string>& tokens) {
@@ -99,7 +138,9 @@ void UCIEngine::handlePosition(const std::vector<std::string>& tokens) {
 
     if (tokens[1] == "startpos") {
         board.setFromFEN("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1");
-        currentColor = Color::WHITE;
+        currentColor = WHITE_SIDE;
+        gameKeys.clear();
+        gameKeys.push_back(board.zobristKey);
 
         int movesIndex = -1;
         for (size_t i = 2; i < tokens.size(); i++) {
@@ -128,12 +169,13 @@ void UCIEngine::handlePosition(const std::vector<std::string>& tokens) {
         }
 
         board.setFromFEN(fen);
+        gameKeys.clear();
+        gameKeys.push_back(board.zobristKey);
 
-        // Parse current color from FEN
         std::istringstream fenSS(fen);
         std::string dummy, colorStr;
         fenSS >> dummy >> colorStr;
-        currentColor = (colorStr == "w") ? Color::WHITE : Color::BLACK;
+        currentColor = (colorStr == "w") ? WHITE_SIDE : BLACK_SIDE;
 
         if (movesIndex != -1) {
             for (size_t i = movesIndex; i < tokens.size(); i++) {
@@ -146,42 +188,26 @@ void UCIEngine::handlePosition(const std::vector<std::string>& tokens) {
 void UCIEngine::makeUCIMove(const std::string& uciMove) {
     if (uciMove.length() < 4) return;
 
-    std::string fromSquare = uciMove.substr(0, 2);
-    std::string toSquare = uciMove.substr(2, 2);
+    MoveList legalMoves;
+    MoveGen::generateAllMoves(board, legalMoves);
 
-    Position from(fromSquare);
-    Position to(toSquare);
-
-    PieceType promotion = PieceType::NONE;
-    if (uciMove.length() == 5) {
-        char promChar = uciMove[4];
-        switch (promChar) {
-            case 'q': promotion = PieceType::QUEEN; break;
-            case 'r': promotion = PieceType::ROOK; break;
-            case 'b': promotion = PieceType::BISHOP; break;
-            case 'n': promotion = PieceType::KNIGHT; break;
-            default: break;
-        }
-    }
-
-    std::vector<Move> legalMoves = board.getAllLegalMoves(currentColor);
-
-    for (Move& move : legalMoves) {
-        if (move.from == from && move.to == to) {
-            if (promotion == PieceType::NONE || move.promotionPiece == promotion) {
-                board.makeMove(move);
-                currentColor = (currentColor == Color::WHITE) ? Color::BLACK : Color::WHITE;
+    for (Move16 move : legalMoves) {
+        if (moveToUCI(move) == uciMove) {
+            UndoState undo;
+            if (board.makeMove(move, undo)) {
+                currentColor = (currentColor == WHITE_SIDE) ? BLACK_SIDE : WHITE_SIDE;
+                gameKeys.push_back(board.zobristKey);
                 return;
             }
         }
     }
 
     if (debug) {
-        std::cout << "info string Illegal move: " << uciMove << std::endl;
+        std::cout << "info string Illegal move/not found: " << uciMove << std::endl;
     }
 }
 
-Color UCIEngine::getCurrentPlayerFromBoard() {
+int UCIEngine::getCurrentPlayerFromBoard() {
     return currentColor;
 }
 
@@ -213,9 +239,8 @@ void UCIEngine::handleGo(const std::vector<std::string>& tokens) {
     if (movetime > 0) {
         timeToThink = movetime - 50;
     } else {
-        Color color = getCurrentPlayerFromBoard();
-        long time = (color == Color::WHITE) ? wtime : btime;
-        long inc = (color == Color::WHITE) ? winc : binc;
+        long time = (currentColor == WHITE_SIDE) ? wtime : btime;
+        long inc = (currentColor == WHITE_SIDE) ? winc : binc;
 
         if (time > 0) {
             long moveOverhead = 50;
@@ -238,32 +263,33 @@ void UCIEngine::handleGo(const std::vector<std::string>& tokens) {
         }
     }
 
-    if (depth > 0) {
-        engine.setDepth(depth);
-    } else if (infinite) {
-        engine.setDepth(20);
-        timeToThink = 0;
-    } else if (timeToThink > 0) {
-        engine.setDepth(20);
-    } else {
-        engine.setDepth(5);
-    }
+    if (depth > 0) engine.setDepth(depth);
+    else if (infinite) { engine.setDepth(20); timeToThink = 0; }
+    else if (timeToThink > 0) engine.setDepth(20);
+    else engine.setDepth(5);
 
-    Color currentCol = getCurrentPlayerFromBoard();
-    Move bestMove = engine.getBestMove(board, currentCol, timeToThink);
-
+    engine.setGameHistory(gameKeys);
+    Move16 bestMove = engine.getBestMove(board, currentColor, timeToThink);
     std::string uci = moveToUCI(bestMove);
 
-    // Validate the bestmove - if empty or invalid, try fallback
-    if (uci.empty() || uci == "a0a0" || uci.length() < 4) {
-        // Fallback: pick the first legal move
-        std::vector<Move> legalMoves = board.getAllLegalMoves(currentCol);
-        if (!legalMoves.empty()) {
-            bestMove = legalMoves[0];
-            uci = moveToUCI(bestMove);
-            std::cerr << "info string WARNING: search returned no move, using fallback: " << uci << std::endl;
-        } else {
-            // No legal moves at all (checkmate or stalemate)
+    if (uci.empty() || uci == "0000" || uci == "a0a0") {
+        MoveList legalMoves;
+        MoveGen::generateAllMoves(board, legalMoves);
+        if (legalMoves.count > 0) {
+            // Find first purely legal (not just pseudo) move
+            for (Move16 m : legalMoves) {
+                UndoState u;
+                if (board.makeMove(m, u)) {
+                    bestMove = m;
+                    uci = moveToUCI(m);
+                    std::cerr << "info string WARNING: search returned no move, using fallback: " << uci << std::endl;
+                    board.undoMove(m, u);
+                    break;
+                }
+            }
+        }
+        
+        if (uci.empty() || uci == "0000" || uci == "a0a0") {
             std::cout << "bestmove 0000" << std::endl;
             return;
         }
@@ -272,25 +298,7 @@ void UCIEngine::handleGo(const std::vector<std::string>& tokens) {
     std::cout << "bestmove " << uci << std::endl;
 }
 
-std::string UCIEngine::moveToUCI(const Move& move) {
-    std::string uciMove = move.from.toNotation() + move.to.toNotation();
-
-    if (move.promotionPiece != PieceType::NONE) {
-        switch (move.promotionPiece) {
-            case PieceType::QUEEN:  uciMove += "q"; break;
-            case PieceType::ROOK:   uciMove += "r"; break;
-            case PieceType::BISHOP: uciMove += "b"; break;
-            case PieceType::KNIGHT: uciMove += "n"; break;
-            default: break;
-        }
-    }
-
-    return uciMove;
-}
-
-void UCIEngine::handleStop() {
-    // In a multithreaded engine, this would signal the search to stop
-}
+void UCIEngine::handleStop() {}
 
 void UCIEngine::handleQuit() {
     std::exit(0);

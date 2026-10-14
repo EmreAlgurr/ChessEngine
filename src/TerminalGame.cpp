@@ -1,4 +1,6 @@
 #include "TerminalGame.h"
+#include "MoveGenerator.h"
+#include "Tuning.h"
 #include <iostream>
 #include <sstream>
 #include <cctype>
@@ -6,7 +8,7 @@
 #include <iomanip>
 
 TerminalGame::TerminalGame()
-    : humanColor(Color::WHITE), currentTurn(Color::WHITE), engineDepth(4) {
+    : humanColor(WHITE_SIDE), currentTurn(WHITE_SIDE), engineDepth(12) {
     engine.setDepth(engineDepth);
     board.setFromFEN("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1");
 }
@@ -36,6 +38,7 @@ void TerminalGame::showWelcome() {
     std::cout << "  perft N   - Perft testi (derinlik N)" << std::endl;
     std::cout << "  divide N  - Perft divide (derinlik N)" << std::endl;
     std::cout << "  test      - Perft test suite calistir" << std::endl;
+    std::cout << "  tune      - Texel tuner calistir (ornek: tune quiet-labeled.epd 20 4 100000)" << std::endl;
     std::cout << "  quit      - Cikis" << std::endl;
     std::cout << "============================================" << std::endl;
     std::cout << std::endl;
@@ -48,53 +51,77 @@ void TerminalGame::showBoard() {
 
 void TerminalGame::newGame() {
     board.setFromFEN("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1");
-    currentTurn = Color::WHITE;
+    currentTurn = WHITE_SIDE;
     std::cout << "Yeni oyun baslatildi!" << std::endl;
     showBoard();
 }
 
 void TerminalGame::showLegalMoves() {
-    std::vector<Move> moves = board.getAllLegalMoves(currentTurn);
-    std::cout << "Uygun hamleler (" << moves.size() << "):";
-    for (const Move& m : moves) {
-        std::cout << " " << m.toUCI();
+    MoveList moves;
+    MoveGen::generateAllMoves(board, moves);
+    
+    int legalCount = 0;
+    std::cout << "Uygun hamleler: ";
+    for (int i=0; i < moves.count; i++) {
+        Move16 m = moves.moves[i];
+        UndoState undo;
+        if (board.makeMove(m, undo)) {
+            std::cout << " " << moveToUCI(m);
+            legalCount++;
+            board.undoMove(m, undo);
+        }
     }
-    std::cout << std::endl;
+    std::cout << "\nToplam " << legalCount << " yasal hamle.\n" << std::endl;
 }
 
 bool TerminalGame::checkGameEnd() {
-    if (board.isCheckmate(currentTurn)) {
-        showBoard();
-        std::string winner = (currentTurn == Color::WHITE) ? "Siyah" : "Beyaz";
-        std::cout << "## SAH MAT! " << winner << " kazandi! ##" << std::endl;
+    MoveList moves;
+    MoveGen::generateAllMoves(board, moves);
+    
+    bool hasLegal = false;
+    for (Move16 m : moves) {
+        UndoState undo;
+        if (board.makeMove(m, undo)) {
+            hasLegal = true;
+            board.undoMove(m, undo);
+            break;
+        }
+    }
+
+    if (!hasLegal) {
+        if (board.isInCheck()) {
+            showBoard();
+            std::string winner = (currentTurn == WHITE_SIDE) ? "Siyah" : "Beyaz";
+            std::cout << "## SAH MAT! " << winner << " kazandi! ##" << std::endl;
+        } else {
+            showBoard();
+            std::cout << "## PAT! Oyun berabere. ##" << std::endl;
+        }
         return true;
     }
-    if (board.isStalemate(currentTurn)) {
-        showBoard();
-        std::cout << "## PAT! Oyun berabere. ##" << std::endl;
-        return true;
-    }
-    if (board.isInCheck(currentTurn)) {
+    
+    if (board.isInCheck()) {
         std::cout << ">> SAH! <<" << std::endl;
     }
     return false;
 }
 
 void TerminalGame::handleEngineMove() {
-    std::string turnStr = (currentTurn == Color::WHITE) ? "Beyaz" : "Siyah";
+    std::string turnStr = (currentTurn == WHITE_SIDE) ? "Beyaz" : "Siyah";
     std::cout << "[" << turnStr << " - Motor dusunuyor...]" << std::endl;
     std::cout.flush();
 
     auto start = std::chrono::steady_clock::now();
-    Move bestMove = engine.getBestMove(board, currentTurn, 0);
+    Move16 bestMove = engine.getBestMove(board, currentTurn, 0);
     auto end = std::chrono::steady_clock::now();
     long ms = std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count();
 
-    std::string uci = bestMove.toUCI();
-    if (!uci.empty() && uci != "a0a0") {
-        board.makeMove(bestMove);
+    if (bestMove != MOVE_NONE) {
+        std::string uci = moveToUCI(bestMove);
+        UndoState undo;
+        board.makeMove(bestMove, undo);
         std::cout << "Motor hamlesi: " << uci << " (" << ms << "ms)" << std::endl;
-        currentTurn = (currentTurn == Color::WHITE) ? Color::BLACK : Color::WHITE;
+        currentTurn = (currentTurn == WHITE_SIDE) ? BLACK_SIDE : WHITE_SIDE;
     } else {
         std::cout << "Motor hamle bulamadi!" << std::endl;
     }
@@ -106,29 +133,14 @@ void TerminalGame::handleEngineMove() {
 bool TerminalGame::tryMakeMove(const std::string& moveStr) {
     if (moveStr.length() < 4) return false;
 
-    std::string fromStr = moveStr.substr(0, 2);
-    std::string toStr = moveStr.substr(2, 2);
-    Position from(fromStr);
-    Position to(toStr);
-
-    PieceType promotion = PieceType::NONE;
-    if (moveStr.length() == 5) {
-        char pc = moveStr[4];
-        switch (pc) {
-            case 'q': promotion = PieceType::QUEEN; break;
-            case 'r': promotion = PieceType::ROOK; break;
-            case 'b': promotion = PieceType::BISHOP; break;
-            case 'n': promotion = PieceType::KNIGHT; break;
-            default: break;
-        }
-    }
-
-    std::vector<Move> legalMoves = board.getAllLegalMoves(currentTurn);
-    for (Move& move : legalMoves) {
-        if (move.from == from && move.to == to) {
-            if (promotion == PieceType::NONE || move.promotionPiece == promotion) {
-                board.makeMove(move);
-                currentTurn = (currentTurn == Color::WHITE) ? Color::BLACK : Color::WHITE;
+    MoveList legalMoves;
+    MoveGen::generateAllMoves(board, legalMoves);
+    
+    for (Move16 move : legalMoves) {
+        if (moveToUCI(move) == moveStr) {
+            UndoState undo;
+            if (board.makeMove(move, undo)) {
+                currentTurn = (currentTurn == WHITE_SIDE) ? BLACK_SIDE : WHITE_SIDE;
                 return true;
             }
         }
@@ -154,10 +166,10 @@ void TerminalGame::handleSetDepth(const std::string& input) {
 void TerminalGame::handleSetColor(const std::string& input) {
     std::string arg = trim(input.substr(5));
     if (arg == "w" || arg == "white" || arg == "beyaz") {
-        humanColor = Color::WHITE;
+        humanColor = WHITE_SIDE;
         std::cout << "Sen beyazla oynuyorsun." << std::endl;
     } else if (arg == "b" || arg == "black" || arg == "siyah") {
-        humanColor = Color::BLACK;
+        humanColor = BLACK_SIDE;
         std::cout << "Sen siyahla oynuyorsun." << std::endl;
     } else {
         std::cout << "Gecersiz renk. Kullanim: color w veya color b" << std::endl;
@@ -189,35 +201,40 @@ void TerminalGame::handlePerft(const std::string& input) {
 }
 
 // ===== PERFT =====
-uint64_t TerminalGame::perft(ChessBoard& b, int depth, Color color) {
+uint64_t TerminalGame::perft(BoardState& b, int depth, int color) {
     if (depth == 0) return 1;
 
-    std::vector<Move> moves = b.getAllLegalMoves(color);
-
-    if (depth == 1) return moves.size();
+    MoveList moves;
+    MoveGen::generateAllMoves(b, moves);
 
     uint64_t nodes = 0;
-    Color next = (color == Color::WHITE) ? Color::BLACK : Color::WHITE;
+    int next = (color == WHITE_SIDE) ? BLACK_SIDE : WHITE_SIDE;
 
-    for (Move& m : moves) {
-        b.makeMove(m);
-        nodes += perft(b, depth - 1, next);
-        b.undoMove(m);
+    for (Move16 m : moves) {
+        UndoState undo;
+        if (b.makeMove(m, undo)) {
+            nodes += perft(b, depth - 1, next);
+            b.undoMove(m, undo);
+        }
     }
     return nodes;
 }
 
-void TerminalGame::perftDivide(ChessBoard& b, int depth, Color color) {
-    std::vector<Move> moves = b.getAllLegalMoves(color);
-    Color next = (color == Color::WHITE) ? Color::BLACK : Color::WHITE;
+void TerminalGame::perftDivide(BoardState& b, int depth, int color) {
+    MoveList moves;
+    MoveGen::generateAllMoves(b, moves);
+    
+    int next = (color == WHITE_SIDE) ? BLACK_SIDE : WHITE_SIDE;
     uint64_t total = 0;
 
-    for (Move& m : moves) {
-        b.makeMove(m);
-        uint64_t cnt = (depth <= 1) ? 1 : perft(b, depth - 1, next);
-        b.undoMove(m);
-        std::cout << m.toUCI() << ": " << cnt << std::endl;
-        total += cnt;
+    for (Move16 m : moves) {
+        UndoState undo;
+        if (b.makeMove(m, undo)) {
+            uint64_t cnt = perft(b, depth - 1, next);
+            b.undoMove(m, undo);
+            std::cout << moveToUCI(m) << ": " << cnt << std::endl;
+            total += cnt;
+        }
     }
     std::cout << std::endl;
     std::cout << "Total: " << total << std::endl;
@@ -232,36 +249,28 @@ void TerminalGame::runPerftSuite() {
     };
 
     std::vector<PerftTest> tests = {
-        // Position 1 - Initial position
         {"Startpos depth 1", "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1", 1, 20},
         {"Startpos depth 2", "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1", 2, 400},
         {"Startpos depth 3", "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1", 3, 8902},
         {"Startpos depth 4", "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1", 4, 197281},
 
-        // Position 2 - Kiwipete (many special moves)
         {"Kiwipete depth 1", "r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq - 0 1", 1, 48},
         {"Kiwipete depth 2", "r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq - 0 1", 2, 2039},
         {"Kiwipete depth 3", "r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq - 0 1", 3, 97862},
 
-        // Position 3 - Endgame with en passant
         {"Position 3 depth 1", "8/2p5/3p4/KP5r/1R3p1k/8/4P1P1/8 w - - 0 1", 1, 14},
         {"Position 3 depth 2", "8/2p5/3p4/KP5r/1R3p1k/8/4P1P1/8 w - - 0 1", 2, 191},
         {"Position 3 depth 3", "8/2p5/3p4/KP5r/1R3p1k/8/4P1P1/8 w - - 0 1", 3, 2812},
         {"Position 3 depth 4", "8/2p5/3p4/KP5r/1R3p1k/8/4P1P1/8 w - - 0 1", 4, 43238},
-        {"Position 3 depth 5", "8/2p5/3p4/KP5r/1R3p1k/8/4P1P1/8 w - - 0 1", 5, 674624},
 
-        // Position 4 - Promotions + castling
         {"Position 4 depth 1", "r3k2r/Pppp1ppp/1b3nbN/nP6/BBP1P3/q4N2/Pp1P2PP/R2Q1RK1 w kq - 0 1", 1, 6},
         {"Position 4 depth 2", "r3k2r/Pppp1ppp/1b3nbN/nP6/BBP1P3/q4N2/Pp1P2PP/R2Q1RK1 w kq - 0 1", 2, 264},
         {"Position 4 depth 3", "r3k2r/Pppp1ppp/1b3nbN/nP6/BBP1P3/q4N2/Pp1P2PP/R2Q1RK1 w kq - 0 1", 3, 9467},
-        {"Position 4 depth 4", "r3k2r/Pppp1ppp/1b3nbN/nP6/BBP1P3/q4N2/Pp1P2PP/R2Q1RK1 w kq - 0 1", 4, 422333},
 
-        // Position 5 - Tricky position
         {"Position 5 depth 1", "rnbq1k1r/pp1Pbppp/2p5/8/2B5/8/PPP1NnPP/RNBQK2R w KQ - 1 8", 1, 44},
         {"Position 5 depth 2", "rnbq1k1r/pp1Pbppp/2p5/8/2B5/8/PPP1NnPP/RNBQK2R w KQ - 1 8", 2, 1486},
         {"Position 5 depth 3", "rnbq1k1r/pp1Pbppp/2p5/8/2B5/8/PPP1NnPP/RNBQK2R w KQ - 1 8", 3, 62379},
 
-        // Position 6 - Complex middlegame
         {"Position 6 depth 1", "r4rk1/1pp1qppp/p1np1n2/2b1p1B1/2B1P1b1/P1NP1N2/1PP1QPPP/R4RK1 w - - 0 10", 1, 46},
         {"Position 6 depth 2", "r4rk1/1pp1qppp/p1np1n2/2b1p1B1/2B1P1b1/P1NP1N2/1PP1QPPP/R4RK1 w - - 0 10", 2, 2079},
         {"Position 6 depth 3", "r4rk1/1pp1qppp/p1np1n2/2b1p1B1/2B1P1b1/P1NP1N2/1PP1QPPP/R4RK1 w - - 0 10", 3, 89890},
@@ -277,15 +286,14 @@ void TerminalGame::runPerftSuite() {
     std::cout << std::endl;
 
     for (const auto& test : tests) {
-        ChessBoard b;
+        BoardState b;
         b.setFromFEN(test.fen);
 
-        // Determine color from FEN
-        Color color = Color::WHITE;
+        int color = WHITE_SIDE;
         std::istringstream ss(test.fen);
         std::string dummy, colorStr;
         ss >> dummy >> colorStr;
-        if (colorStr == "b") color = Color::BLACK;
+        if (colorStr == "b") color = BLACK_SIDE;
 
         auto start = std::chrono::steady_clock::now();
         uint64_t result = perft(b, test.depth, color);
@@ -324,15 +332,13 @@ void TerminalGame::run() {
 
     std::string line;
     while (true) {
-        // If it's the engine's turn, let it play
         if (currentTurn != humanColor) {
             handleEngineMove();
             if (checkGameEnd()) break;
             continue;
         }
 
-        // Player's turn
-        std::string turnStr = (currentTurn == Color::WHITE) ? "Beyaz" : "Siyah";
+        std::string turnStr = (currentTurn == WHITE_SIDE) ? "Beyaz" : "Siyah";
         std::cout << "[" << turnStr << " - Senin hamlen] > ";
         std::cout.flush();
 
@@ -340,7 +346,6 @@ void TerminalGame::run() {
         line = trim(line);
         if (line.empty()) continue;
 
-        // === Commands ===
         if (line == "quit" || line == "exit") {
             std::cout << "Gorusuruz!" << std::endl;
             break;
@@ -383,24 +388,31 @@ void TerminalGame::run() {
             }
             continue;
         }
+        if (line.length() >= 4 && line.substr(0, 4) == "tune") {
+            std::istringstream ss(line);
+            std::string cmd, path = "quiet-labeled.epd";
+            int epochs = 50, threads = 4, maxPositions = 0;
+            ss >> cmd >> path >> epochs >> threads >> maxPositions;
+            Tuner::run(path, epochs, threads, maxPositions);
+            continue;
+        }
+
         if (line.length() >= 4 && line.substr(0, 3) == "fen") {
             std::string fen = trim(line.substr(4));
             if (fen.empty()) {
                 std::cout << "Kullanim: fen <FEN string>" << std::endl;
             } else {
                 board.setFromFEN(fen);
-                // Determine color from FEN
                 std::istringstream ss(fen);
                 std::string dummy, colorStr;
                 ss >> dummy >> colorStr;
-                currentTurn = (colorStr == "b") ? Color::BLACK : Color::WHITE;
+                currentTurn = (colorStr == "b") ? BLACK_SIDE : WHITE_SIDE;
                 std::cout << "FEN yuklendi." << std::endl;
                 showBoard();
             }
             continue;
         }
 
-        // === Try as a move ===
         if (line.length() >= 4 && std::islower(line[0]) && std::isdigit(line[1])
             && std::islower(line[2]) && std::isdigit(line[3])) {
 

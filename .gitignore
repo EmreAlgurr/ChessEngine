@@ -7,12 +7,15 @@
 build/
 bin/
 obj/
+versions/
+sf/
 
 # IDE files
 .vscode/
 .vs/
 .idea/
 
-# Temp files
+# Temp / Dataset files
 test_output.txt
 *.log
+*.epd

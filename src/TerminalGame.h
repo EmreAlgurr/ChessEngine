@@ -1,6 +1,6 @@
 #pragma once
 
-#include "ChessBoard.h"
+#include "BitBoard.h"
 #include "SimpleEngine.h"
 #include <string>
 #include <vector>
@@ -16,10 +16,10 @@ public:
     static void runPerftSuite();
 
 private:
-    ChessBoard board;
+    BoardState board;
     SimpleEngine engine;
-    Color humanColor;
-    Color currentTurn;
+    int humanColor;
+    int currentTurn;
     int engineDepth;
 
     void showWelcome();
@@ -35,8 +35,8 @@ private:
     void handlePerft(const std::string& input);
 
     // Perft helpers
-    static uint64_t perft(ChessBoard& b, int depth, Color color);
-    static void perftDivide(ChessBoard& b, int depth, Color color);
+    static uint64_t perft(BoardState& b, int depth, int color);
+    static void perftDivide(BoardState& b, int depth, int color);
 
     // Utility
     static std::string trim(const std::string& s);
