@@ -10,18 +10,23 @@ Bitboard tabanlı hızlı hamle üretimi, PVS arama algoritmaları, Polyglot aç
 
 Motorun başlangıçtaki ~2150-2200 seviyesinden günümüzdeki **~2483 Elo** seviyesine ulaşmasında uygulanan her geliştirme adımı, resmi turnuva aracı `fastchess` ve standart açılış havuzu (`8moves_v3.pgn`) ile yüzlerce oyunluk SPRT ve self-play maçlarıyla doğrulanmıştır:
 
-| # | Geliştirme / Eklenen Özellik | Açıklama & Yapılan İşlem | Ölçülen Net Katkı | Ulaşılan Seviye |
+| # | Geliştirme / Aşama | Açıklama & Yapılan İşlem | Test Türü & Maç Sayısı | Ölçülen Net Elo |
 | :-: | :--- | :--- | :---: | :---: |
-| **1** | **MovePicker & Hamle Sıralama** | Tek üretim (`generateAllMoves x1`) + tembel seçim (`lazy selection`). TT Hamlesi, SEE tabanlı taktik ayırımı ve 2 katmanlı Killer Moves. | *NPS ve Arama Kararlılığı* | ~2200 Elo |
-| **2** | **İlk Büyük Baraj (SF 2300)** | Budamaların (NMP, RFP, FP, LMR) dengelenmesiyle Stockfish 2300 karşısında test edildi (51.0/100, %51). | **+3.5 Elo vs SF 2300** | **2303 Elo** |
-| **3** | **1. Aşama Texel Tuning** | Dahili tuner ile 100k sessiz pozisyonda taş değerleri, çift fil, açık hat kale ve 6 adet PST tablosu yerel arama ile optimize edildi. | **+152.4 Elo** (Self-Play) | **2376 Elo** *(SF 2450'ye karşı)* |
-| **4** | **Polyglot Açılış Kitabı** | 30.000 GM pozisyonlu `gm2001.bin` binary açılış kitabı entegrasyonu. Açılışta 0 ms hamle oynayarak tuzaklardan kaçındı ve süre avantajı sağladı. | **+56.1 Elo** (Self-Play) | **~2430 Elo** |
-| **5** | **Zaman Ölçekleme Testi (3+0)** | Süre uzadığında taktiksel derinliğin test edilmesi. Stockfish 2400'e karşı 4/4 maç (%100) kazanıldı. | *Derin Arama Gücü Doğrulandı* | — |
-| **6** | **Gelişmiş Pozisyonel Terimler** | Değerlendirme fonksiyonuna 5 yeni stratejik terim eklendi:<br>• **İzole Piyon Cezası** (-11)<br>• **Kademeli Geçer Piyon Bonusları** (4-7. yataylar: 13 / 34 / 65 / 95)<br>• **7. Yatayda Kale Bonusu** (+7)<br>• **Taş Hareketliliği (Safe Mobility):** At (+2) ve Fil (+4)<br>• **Oyun Sonu Şah Tablosu (King EG):** Vezirler kesilince merkeze hücum | *Tuning Öncesi Hazırlık* | — |
-| **7** | **2. Aşama Texel Tuning (200k Pozisyon)** | 232 parametre grubu, 200.000 GM pozisyonunda 25 epoch boyunca eğitildi. Hata oranı (MSE) `0.0717`den `0.0701`e düşürüldü. Eski Tuned motora karşı 200 maçta 107W - 57L - 36D (%62.5). | **+88.74 Elo** (%100 LOS) | **~2480+ Elo** |
-| **8** | **Stockfish 2500 Benchmark Testi** | Stockfish 2500 ile 100 oyunluk resmi turnuva maçı (1+0.01):<br>**40 Galibiyet, 45 Mağlubiyet, 15 Beraberlik (47.5 / 100 puan - %47.5)** | Sadece **-17.39 Elo** fark | **~2483 ELO** |
+| **1** | **MovePicker Refactoring** | Tek üretim (`generateAllMoves x1`) + tembel seçim (`lazy selection sort`) mimarisi. Düğüm başı 4x üretim kalktı. | 100 Oyun (1+0.01s) | **+10.43 ± 41.5 Elo** |
+| **2** | **3-Fold Repetition & Zobrist** | Arama yolu ve oyun geçmişi üzerinde tekrarların Zobrist hash ile taranması. | — | *Stabilite Artışı* |
+| **3** | **SEE (Static Exchange Evaluation)** | Taş değişimlerinde kaba hesap yerine gerçek koruma zinciri analizi ve taş alışlarının kalitesine göre sıralanması. | vs SF 2100 (40 Oyun) | **+147.19 ± 119 Elo** |
+| **4** | **Root (Kök) Hamle Sıralaması** | Iterative Deepening yaparken bir önceki derinliğin en iyi hamlesinin kök aramasında en başa (TT Move) alınması. | 40 Oyun (1+0.01s) | **+52.51 ± 75.5 Elo** |
+| **5** | **İlk Pozisyonel Değerlendirme** | Çift fil avantajı ve açık/yarı açık hatlardaki kalelere pozisyonel prim verilmesi. | 100 Oyun (1+0.01s) | **+70.44 ± 51.5 Elo** |
+| **6** | **Basit Rok Bonusu (Simple Castle)** | Şah güvenliği için gereksiz karmaşık formüller yerine doğrudan başarılı rok pozisyonlarına prim verilmesi. | 440 Oyun SPRT | **+36.46 ± 27.0 Elo** |
+| **7** | **Arama Budamaları (RFP & FP)** | Reverse Futility Pruning (Static Null Move) ve Futility Pruning ile umutsuz dalların erkenden budanması. | 460 Oyun SPRT | **+20.42 ± 28.7 Elo** |
+| **8** | **Stockfish 2300 Barajı** | Arama ve budama parametrelerinin dengelenmesi sonrası Stockfish 2300'e karşı ilk zafer (51/100, %51). | 100 Oyun vs SF 2300 | **+3.5 Elo (2303 Elo)** |
+| **9** | **1. Aşama Texel Tuning** | 100k sessiz pozisyonda taş değerleri ve 6 adet PST tablosunun çok iş parçacıklı yerel arama ile eğitilmesi. | Self-Play (100 Oyun) | **+152.4 Elo** *(SF 2450'ye karşı 2376 Elo)* |
+| **10** | **Polyglot Açılış Kitabı** | 30.000 GM pozisyonlu `gm2001.bin` entegrasyonu (0 ms açılış hamlesi ve varyant avantajı). | Self-Play (100 Oyun) | **+56.1 Elo** |
+| **11** | **Zaman Ölçekleme Testi (3+0)** | Süre uzadığında arama derinliğinin testi. Stockfish 2400'e karşı 4/4 maç (%100) kazanıldı. | 4 Maç vs SF 2400 | *Derin Arama Doğrulandı* |
+| **12** | **Gelişmiş Pozisyonel Terimler & 2. Tur Texel Tuning** | İzole piyon (-11), 4-7. kademe geçer piyonlar (13/34/65/95), 7. yatay kale (+7), at/fil hareketliliği (+2/+4) ve King EG tablosu eklenip 200k pozisyonda 25 epoch eğitildi. | 200 Oyun vs Tuned v1 | **+88.74 ± 45.8 Elo** (%100 LOS) |
+| **13** | **Stockfish 2500 Benchmark** | Stockfish 2500 ile 100 maçlık resmi turnuva:<br>**40 Galibiyet, 45 Mağlubiyet, 15 Beraberlik (%47.5 Skor)** | 100 Oyun vs SF 2500 | **~2483 ELO** *(Sadece -17.39 Elo fark)* |
 
-> **Kümülatif Net Güç Artışı:** Yapılan optimizasyonlar, açılış kitabı ve iki aşamalı Texel Tuning süreci motora **+297'den fazla net Elo** kazandırmış ve motoru doğrudan Stockfish 2500 seviyesine çıkarmıştır.
+> **Kümülatif Net Güç Artışı:** Uygulanan tüm arama budamaları, taş/PST optimizasyonları, açılış kitabı ve iki aşamalı Texel Tuning süreci motoru ~2150 Elo'dan alıp **~2483 Elo** seviyesine ulaştırmış ve Stockfish 2500 ile kafa kafaya oynayabilir hale getirmiştir.
 
 ---
 
