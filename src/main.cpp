@@ -3,6 +3,7 @@
 #include "Magics.h"
 #include "Zobrist.h"
 #include "Tuning.h"
+#include "nnue.h"
 #include <iostream>
 #include <string>
 #include <sstream>
@@ -11,6 +12,7 @@ int main(int argc, char* argv[]) {
     // 1. Mandatory Engine Initialization
     Magics::initMagics();
     Zobrist::init();
+    nnue_init("nn-04cf2b4ed1da.nnue");
 
     // 2. Command-line argument shortcuts
     if (argc > 1) {

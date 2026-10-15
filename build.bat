@@ -22,6 +22,8 @@ if %ERRORLEVEL% EQU 0 (
         src/Book.cpp ^
         src/UCIEngine.cpp ^
         src/TerminalGame.cpp ^
+        src/misc.cpp ^
+        src/nnue.cpp ^
         src/main.cpp
     if %ERRORLEVEL% EQU 0 (
         echo [SUCCESS] Built %OUT%

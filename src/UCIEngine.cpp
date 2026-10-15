@@ -1,6 +1,7 @@
 #include "UCIEngine.h"
 #include "Tuning.h"
 #include "Book.h"
+#include "nnue.h"
 #include <iostream>
 #include <sstream>
 #include <cstdlib>
@@ -82,6 +83,7 @@ void UCIEngine::handleUCI() {
     std::cout << "id author Antigravity" << std::endl;
     std::cout << "option name OwnBook type check default true" << std::endl;
     std::cout << "option name BookFile type string default gm2001.bin" << std::endl;
+    std::cout << "option name EvalFile type string default nn-04cf2b4ed1da.nnue" << std::endl;
     std::cout << "uciok" << std::endl;
 }
 
@@ -123,6 +125,8 @@ void UCIEngine::handleSetOption(const std::vector<std::string>& tokens) {
         openingBook.setEnabled(lowerVal == "true" || lowerVal == "1");
     } else if (lowerName == "bookfile") {
         openingBook.open(val);
+    } else if (lowerName == "evalfile") {
+        nnue_init(val.c_str());
     }
 }
 

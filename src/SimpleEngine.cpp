@@ -1,6 +1,7 @@
 #include "SimpleEngine.h"
 #include "EvalParams.h"
 #include "Book.h"
+#include "nnue.h"
 #include <algorithm>
 #include <iostream>
 #include <cmath>
@@ -533,6 +534,42 @@ int SimpleEngine::quiescence(BoardState& board, int alpha, int beta, int ply, in
 }
 
 int SimpleEngine::evaluate(const BoardState& board, int activeColor) const {
+    if (is_nnue_loaded()) {
+        static const int PIECE_MAP[2][6] = {
+            // WHITE_SIDE: PAWN, KNIGHT, BISHOP, ROOK, QUEEN, KING
+            { wpawn, wknight, wbishop, wrook, wqueen, wking },
+            // BLACK_SIDE: PAWN, KNIGHT, BISHOP, ROOK, QUEEN, KING
+            { bpawn, bknight, bbishop, brook, bqueen, bking }
+        };
+
+        int pieces[33];
+        int squares[33];
+
+        pieces[0] = wking;
+        squares[0] = lsb(board.pieces[WHITE_SIDE][KING_IDX]);
+
+        pieces[1] = bking;
+        squares[1] = lsb(board.pieces[BLACK_SIDE][KING_IDX]);
+
+        int count = 2;
+        for (int side = WHITE_SIDE; side <= BLACK_SIDE; side++) {
+            for (int pt = PAWN_IDX; pt < KING_IDX; pt++) {
+                uint64_t bb = board.pieces[side][pt];
+                int nnuePiece = PIECE_MAP[side][pt];
+                while (bb) {
+                    squares[count] = popLsb(bb);
+                    pieces[count] = nnuePiece;
+                    count++;
+                }
+            }
+        }
+        pieces[count] = 0;
+        squares[count] = 0;
+
+        int player = (activeColor == WHITE_SIDE) ? white : black;
+        return nnue_evaluate(player, pieces, squares);
+    }
+
     int scores[2] = {0, 0};
     bool endgame = isEndgame(board);
 
