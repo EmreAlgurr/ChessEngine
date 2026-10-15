@@ -83,6 +83,17 @@ const int SimpleEngine::KING_EG_TABLE[64] = {
     -50,-30,-30,-30,-30,-30,-30,-50
 };
 
+static int lmrTable[128][64];
+
+static bool initLmrDone = []() {
+    for (int d = 1; d < 128; d++) {
+        for (int m = 1; m < 64; m++) {
+            lmrTable[d][m] = static_cast<int>(0.75 + std::log(d) * std::log(m) / 2.25);
+        }
+    }
+    return true;
+}();
+
 SimpleEngine::SimpleEngine() : maxDepth(4), stopSearch(false), nodesSearched(0), tt(16) {
     for (int i = 0; i < MAX_PLY + 32; i++) {
         nnueStack[i].data.accumulator.computedAccumulation = 0;
@@ -326,7 +337,7 @@ bool SimpleEngine::isRepetition(const BoardState& board, int ply) {
     return false;
 }
 
-int SimpleEngine::negamax(BoardState& board, int depth, int ply, int alpha, int beta, int color, bool allowNull) {
+int SimpleEngine::negamax(BoardState& board, int depth, int ply, int alpha, int beta, int color, bool allowNull, Move16 excludedMove) {
     nodesSearched++;
 
     if ((nodesSearched & 2047) == 0) {
@@ -343,8 +354,10 @@ int SimpleEngine::negamax(BoardState& board, int depth, int ply, int alpha, int 
     int alphaOriginal = alpha;
     int ttScore = 0;
     uint16_t ttMove = 0;
+    int ttDepth = 0;
+    int ttBound = 0;
 
-    if (tt.probe(board.zobristKey, depth, alpha, beta, ply, ttScore, ttMove)) {
+    if (excludedMove == 0 && tt.probe(board.zobristKey, depth, alpha, beta, ply, ttScore, ttMove, &ttDepth, &ttBound)) {
         return ttScore;
     }
 
@@ -387,6 +400,28 @@ int SimpleEngine::negamax(BoardState& board, int depth, int ply, int alpha, int 
         }
     }
 
+    // SINGULAR EXTENSIONS (SE)
+    bool isSingular = false;
+    if (excludedMove == 0 
+        && depth >= 6 
+        && ttMove != 0 
+        && ttDepth >= depth - 3 
+        && ttBound != TT_UPPER 
+        && std::abs(ttScore) < 900000 
+        && ply > 0) 
+    {
+        int singularMargin = 3 * depth;
+        int singularBeta = ttScore - singularMargin;
+        int singularDepth = (depth - 1) / 2;
+
+        int singularScore = negamax(board, singularDepth, ply, singularBeta - 1, singularBeta, color, false, ttMove);
+        if (stopSearch) return 0;
+
+        if (singularScore < singularBeta) {
+            isSingular = true;
+        }
+    }
+
     // Move Picker Initialization
     MovePicker picker(board, ttMove, killerMoves[ply][0], killerMoves[ply][1], history);
 
@@ -397,6 +432,8 @@ int SimpleEngine::negamax(BoardState& board, int depth, int ply, int alpha, int 
     Move16 move;
 
     while ((move = picker.nextMove()) != 0) {
+        if (move == excludedMove) continue;
+
         bool isAdvPawn = false;
         int pt = board.pieceOnSquare(moveFrom(move));
         if (pt == PAWN_IDX) {
@@ -432,12 +469,14 @@ int SimpleEngine::negamax(BoardState& board, int depth, int ply, int alpha, int 
         int extension = 0;
         if (givesCheck && ply < MAX_PLY) {
             extension = 1;
+        } else if (move == ttMove && isSingular && ply < MAX_PLY) {
+            extension = 1;
         }
         
         int newDepth = depth - 1 + extension;
 
         int score;
-        if (foundPv) {
+        if (legalCount > 1) {
             bool isLmrStage = (picker.stage == STAGE_QUIETS || picker.stage == STAGE_BAD_CAPTURES);
             
             // Extra LMR Security Conditions
@@ -450,13 +489,17 @@ int SimpleEngine::negamax(BoardState& board, int depth, int ply, int alpha, int 
             
             // LMR Execution
             if (canLMR && legalCount > 3 && newDepth >= 2) {
-                int R = 1;
-                // Dynamic Reduction Formula
-                if (newDepth > 3 && legalCount > 6) {
-                    R = 2; 
-                }
-                
+                int dClamped = std::min(newDepth, 127);
+                int mClamped = std::min(legalCount, 63);
+                int R = lmrTable[dClamped][mClamped];
+
+                // History heuristic ile dinamik ayarlama
+                int hist = history[color][moveFrom(move)][moveTo(move)];
+                if (hist < -1000) R += 1;
+                else if (hist > 2000) R -= 1;
+
                 // Safety bound: prevent R from resetting the search completely
+                if (R < 1) R = 1;
                 if (R >= newDepth) R = newDepth - 1; 
                 
                 // 1. PVS Search with Zero Window & Reduction
@@ -511,17 +554,20 @@ int SimpleEngine::negamax(BoardState& board, int depth, int ply, int alpha, int 
     }
 
     if (legalCount == 0) {
+        if (excludedMove != 0) return -999999;
         if (board.isInCheck()) return -999999 + ply; // Mate
         return 0; // Stalemate
     }
 
-    int bound = TT_EXACT;
-    if (maxScore <= alphaOriginal) {
-        bound = TT_UPPER;
-    } else if (maxScore >= beta) {
-        bound = TT_LOWER;
+    if (excludedMove == 0) {
+        int bound = TT_EXACT;
+        if (maxScore <= alphaOriginal) {
+            bound = TT_UPPER;
+        } else if (maxScore >= beta) {
+            bound = TT_LOWER;
+        }
+        tt.store(board.zobristKey, depth, ply, maxScore, bound, bestMove);
     }
-    tt.store(board.zobristKey, depth, ply, maxScore, bound, bestMove);
 
     return maxScore;
 }

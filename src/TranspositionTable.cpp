@@ -5,10 +5,27 @@ void TranspositionTable::store(uint64_t key, int depth, int ply, int score, int 
     uint64_t index = key % numEntries; // Veya numEntries power of 2 ise (key & (numEntries - 1))
     TTEntry* entry = &table[index];
 
-    // Replacement Scheme (Değiştirme Stratejisi):
-    // Her zaman yeni veriyi yaz (Always Replace) veya daha derin bir veriyse yaz.
-    // Şimdilik en basit ve agresif olanı: Her zaman üzerine yaz!
-    // Sadece eğer hamle yoksa eski hamleyi koru ki Move Ordering bozulmasın.
+    // Replacement Scheme (Derinlik Öncelikli + Yaş Temelli):
+    // 1. Hücre boşsa veya eski bir aramadan kalmışsa (age != currentAge) -> yaz
+    // 2. Aynı pozisyonsa ve yeni arama daha derinse (veya eşitse ya da EXACT ise) -> yaz
+    // 3. Farklı pozisyon (çarpışma) ve yeni arama eski derinlikten büyük veya eşitse -> yaz
+    bool replace = false;
+    if (entry->key == 0 || entry->age != currentAge) {
+        replace = true;
+    } else if (entry->key == key) {
+        if (depth >= entry->depth || (bound == TT_EXACT && entry->bound != TT_EXACT)) {
+            replace = true;
+        } else if (move != 0 && entry->move == 0) {
+            entry->move = move;
+        }
+    } else {
+        if (depth >= entry->depth) {
+            replace = true;
+        }
+    }
+
+    if (!replace) return;
+
     if (move == 0 && entry->key == key) {
         move = entry->move;
     }
@@ -26,7 +43,7 @@ void TranspositionTable::store(uint64_t key, int depth, int ply, int score, int 
 }
 
 // Tablodan Okuma
-bool TranspositionTable::probe(uint64_t key, int depth, int alpha, int beta, int ply, int& returnScore, uint16_t& ttMove) {
+bool TranspositionTable::probe(uint64_t key, int depth, int alpha, int beta, int ply, int& returnScore, uint16_t& ttMove, int* outDepth, int* outBound) {
     uint64_t index = key % numEntries;
     TTEntry* entry = &table[index];
 
@@ -39,6 +56,14 @@ bool TranspositionTable::probe(uint64_t key, int depth, int alpha, int beta, int
     // Eşleşme var! Move ordering için hamleyi kesinlikle döndür.
     ttMove = entry->move;
 
+    int score = entry->score;
+    if (score > 900000) score -= ply;
+    else if (score < -900000) score += ply;
+    returnScore = score;
+
+    if (outDepth) *outDepth = entry->depth;
+    if (outBound) *outBound = entry->bound;
+
     // Eğer bu skoru daha düşük bir derinlikte bulduysak, puana GÜVENEMEYİZ. 
     // Sadece hamleyi alıp çıkarız.
     if (entry->depth < depth) {
@@ -46,11 +71,6 @@ bool TranspositionTable::probe(uint64_t key, int depth, int alpha, int beta, int
     }
 
     // Skoru Alfa-Beta sınırlarına göre doğrula
-    returnScore = entry->score;
-    
-    if (returnScore > 900000) returnScore -= ply;
-    else if (returnScore < -900000) returnScore += ply;
-    
     if (entry->bound == TT_EXACT) {
         return true; // Gerçek skor, direkt kullan!
     } 

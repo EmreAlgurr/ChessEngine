@@ -42,7 +42,7 @@ public:
     }
 
     // TT'den veri okuma (Probe)
-    bool probe(uint64_t key, int depth, int alpha, int beta, int ply, int& returnScore, uint16_t& ttMove);
+    bool probe(uint64_t key, int depth, int alpha, int beta, int ply, int& returnScore, uint16_t& ttMove, int* outDepth = nullptr, int* outBound = nullptr);
 
     // TT'ye veri yazma (Store)
     void store(uint64_t key, int depth, int ply, int score, int evalType, uint16_t move);

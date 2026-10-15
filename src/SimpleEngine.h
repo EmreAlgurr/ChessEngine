@@ -115,7 +115,7 @@ private:
 
     bool isEndgame(const BoardState& board) const;
 
-    int negamax(BoardState& board, int depth, int ply, int alpha, int beta, int color, bool allowNull = true);
+    int negamax(BoardState& board, int depth, int ply, int alpha, int beta, int color, bool allowNull = true, Move16 excludedMove = 0);
     int quiescence(BoardState& board, int alpha, int beta, int ply, int color);
 
     int getBasicValue(int pt) const;

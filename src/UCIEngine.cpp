@@ -241,29 +241,31 @@ void UCIEngine::handleGo(const std::vector<std::string>& tokens) {
     long timeToThink = 0;
 
     if (movetime > 0) {
-        timeToThink = movetime - 50;
+        timeToThink = movetime - 15;
+        if (timeToThink < 1) timeToThink = 1;
     } else {
         long time = (currentColor == WHITE_SIDE) ? wtime : btime;
         long inc = (currentColor == WHITE_SIDE) ? winc : binc;
 
         if (time > 0) {
-            long moveOverhead = 50;
+            long moveOverhead = 15; // fastchess ve lokal GUI için 15ms pay yeterli
             long usableTime = time - moveOverhead;
             if (usableTime < 0) usableTime = 0;
 
-            if (usableTime < 1000) {
-                timeToThink = usableTime / 4;
-                if (timeToThink < 1 && usableTime > 0) timeToThink = 1;
-            } else {
-                timeToThink = (usableTime / 30) + (inc / 2);
-                if (timeToThink > static_cast<long>(usableTime * 0.8)) {
-                    timeToThink = static_cast<long>(usableTime * 0.8);
-                }
+            // Formül: Kalan süreyi 25 hamleye yay + arttırmanın (increment) %75'ini ekle
+            timeToThink = (usableTime / 25) + (inc * 3 / 4);
+
+            // Güvenlik tavanı: Tek hamlede kalan sürenin %20'sinden fazlasını ASLA harcama
+            long maxAlloc = static_cast<long>(usableTime * 0.20);
+            if (timeToThink > maxAlloc) {
+                timeToThink = maxAlloc;
             }
 
-            if (timeToThink < 50 && usableTime > 200) {
-                timeToThink = 50;
+            // Güvenlik tabanı: usableTime > 30 iken en az 10ms düşün
+            if (timeToThink < 10 && usableTime > 30) {
+                timeToThink = std::min(10L, usableTime / 2);
             }
+            if (timeToThink < 1) timeToThink = 1;
         }
     }
 
