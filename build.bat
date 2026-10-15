@@ -9,8 +9,8 @@ if "%OUT%"=="" set OUT=ChessEngine.exe
 
 where g++ >nul 2>nul
 if %ERRORLEVEL% EQU 0 (
-    echo [INFO] Using g++ compiler...
-    g++ -std=c++17 -O2 -o %OUT% ^
+    echo [INFO] Using g++ compiler with AVX2...
+    g++ -std=c++17 -O2 -mavx2 -o %OUT% ^
         src/BitBoard.cpp ^
         src/Magics.cpp ^
         src/Zobrist.cpp ^

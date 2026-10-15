@@ -83,9 +83,19 @@ const int SimpleEngine::KING_EG_TABLE[64] = {
     -50,-30,-30,-30,-30,-30,-30,-50
 };
 
-SimpleEngine::SimpleEngine() : maxDepth(4), stopSearch(false), nodesSearched(0), tt(16) {}
+SimpleEngine::SimpleEngine() : maxDepth(4), stopSearch(false), nodesSearched(0), tt(16) {
+    for (int i = 0; i < MAX_PLY + 32; i++) {
+        nnueStack[i].data.accumulator.computedAccumulation = 0;
+        nnueStack[i].data.dirtyPiece.dirtyNum = 0;
+    }
+}
 
-SimpleEngine::SimpleEngine(int depth) : maxDepth(depth), stopSearch(false), nodesSearched(0), tt(16) {}
+SimpleEngine::SimpleEngine(int depth) : maxDepth(depth), stopSearch(false), nodesSearched(0), tt(16) {
+    for (int i = 0; i < MAX_PLY + 32; i++) {
+        nnueStack[i].data.accumulator.computedAccumulation = 0;
+        nnueStack[i].data.dirtyPiece.dirtyNum = 0;
+    }
+}
 
 void SimpleEngine::setDepth(int depth) { maxDepth = depth; }
 
@@ -109,6 +119,13 @@ Move16 SimpleEngine::getBestMove(BoardState& board, int color, long timeLimitMs)
     tt.newSearch();
     clearHistoryAndKillers();
     auto startTime = std::chrono::steady_clock::now();
+
+    // Reset all plies of nnueStack to ensure zero leakage from previous searches
+    for (int i = 0; i < MAX_PLY + 32; i++) {
+        nnueStack[i].data.accumulator.computedAccumulation = 0;
+        nnueStack[i].data.dirtyPiece.dirtyNum = 0;
+    }
+    evaluate(board, color, 0);
 
     // --- Tekrar tespiti icin anahtar yigini ---
     // gameKeys'in son elemani kok pozisyon olmali; degilse (or. TerminalGame)
@@ -179,9 +196,12 @@ Move16 SimpleEngine::getBestMove(BoardState& board, int color, long timeLimitMs)
                 int legalMovesSeen = 0;
 
                 for (Move16 move : rootMoves) {
+                    int pt = board.pieceOnSquare(moveFrom(move));
                     UndoState undo;
                     if (!board.makeMove(move, undo)) continue;
                     legalMovesSeen++;
+
+                    recordMoveNNUE(1, move, pt, color, undo);
 
                     if (!hasBestMove && d == 1 && legalMovesSeen == 1) {
                         bestMove = move;
@@ -335,7 +355,7 @@ int SimpleEngine::negamax(BoardState& board, int depth, int ply, int alpha, int 
 
     int staticEval = 0;
     if (!inCheck && depth <= 4) {
-        staticEval = evaluate(board, color);
+        staticEval = evaluate(board, color, ply);
     }
 
     // REVERSE FUTILITY PRUNING (RFP / Static Null Move Pruning)
@@ -351,6 +371,11 @@ int SimpleEngine::negamax(BoardState& board, int depth, int ply, int alpha, int 
         
         UndoState nullUndo;
         board.makeNullMove(nullUndo); 
+        if (ply + 1 < MAX_PLY + 16) {
+            nnueStack[ply + 1].data.dirtyPiece.dirtyNum = 0;
+            nnueStack[ply + 1].data.dirtyPiece.pc[0] = 0;
+            nnueStack[ply + 1].data.accumulator.computedAccumulation = 0;
+        }
         
         int R = 2; // Reduction
         int nullScore = -negamax(board, depth - 1 - R, ply + 1, -beta, -beta + 1, enemyColor, false);
@@ -383,6 +408,10 @@ int SimpleEngine::negamax(BoardState& board, int depth, int ply, int alpha, int 
         UndoState undo;
         if (!board.makeMove(move, undo)) continue;
         legalCount++;
+
+        if (ply + 1 < MAX_PLY + 16) {
+            recordMoveNNUE(ply + 1, move, pt, color, undo);
+        }
 
         bool isQuietMove = !isCapture(move) && !isPromotion(move);
         bool givesCheck = board.isInCheck();
@@ -505,7 +534,7 @@ int SimpleEngine::quiescence(BoardState& board, int alpha, int beta, int ply, in
     }
     if (stopSearch) return 0;
 
-    int standPat = evaluate(board, color);
+    int standPat = evaluate(board, color, ply);
     if (standPat >= beta) return beta;
 
     const int DELTA_MARGIN = QUEEN_VAL + 200;
@@ -518,8 +547,13 @@ int SimpleEngine::quiescence(BoardState& board, int alpha, int beta, int ply, in
     orderMoves(moves, board, 0, ply, color);
 
     for (Move16 move : moves) {
+        int movingPiece = board.pieceOnSquare(moveFrom(move));
         UndoState undo;
         if (!board.makeMove(move, undo)) continue;
+
+        if (ply + 1 < MAX_PLY + 16) {
+            recordMoveNNUE(ply + 1, move, movingPiece, color, undo);
+        }
 
         int score = -quiescence(board, -beta, -alpha, ply + 1, color ^ 1);
         board.undoMove(move, undo);
@@ -533,7 +567,97 @@ int SimpleEngine::quiescence(BoardState& board, int alpha, int beta, int ply, in
     return alpha;
 }
 
-int SimpleEngine::evaluate(const BoardState& board, int activeColor) const {
+void SimpleEngine::recordMoveNNUE(int nextPly, Move16 m, int movingPiece, int side, const UndoState& undo) {
+    if (nextPly < 0 || nextPly >= MAX_PLY + 16) return;
+
+    static const int PIECE_MAP[2][6] = {
+        // WHITE_SIDE: PAWN, KNIGHT, BISHOP, ROOK, QUEEN, KING
+        { wpawn, wknight, wbishop, wrook, wqueen, wking },
+        // BLACK_SIDE: PAWN, KNIGHT, BISHOP, ROOK, QUEEN, KING
+        { bpawn, bknight, bbishop, brook, bqueen, bking }
+    };
+
+    DirtyPiece& dp = nnueStack[nextPly].data.dirtyPiece;
+    nnueStack[nextPly].data.accumulator.computedAccumulation = 0;
+
+    int from = moveFrom(m);
+    int to   = moveTo(m);
+    int opp  = side ^ 1;
+
+    if (isCastle(m)) {
+        int rookFrom, rookTo;
+        if (moveFlags(m) == FLAG_KING_CASTLE) {
+            rookFrom = (side == WHITE_SIDE) ? H1 : H8;
+            rookTo   = (side == WHITE_SIDE) ? F1 : F8;
+        } else {
+            rookFrom = (side == WHITE_SIDE) ? A1 : A8;
+            rookTo   = (side == WHITE_SIDE) ? D1 : D8;
+        }
+        dp.dirtyNum = 2;
+        dp.pc[0] = PIECE_MAP[side][KING_IDX];
+        dp.from[0] = from;
+        dp.to[0] = to;
+        dp.pc[1] = PIECE_MAP[side][ROOK_IDX];
+        dp.from[1] = rookFrom;
+        dp.to[1] = rookTo;
+    }
+    else if (isPromotion(m)) {
+        int promoType = promotionPiece(m); // 1=Knight, 2=Bishop, 3=Rook, 4=Queen
+        if (promoType < 1 || promoType > 4) promoType = QUEEN_IDX;
+        if (isCapture(m)) {
+            dp.dirtyNum = 3;
+            dp.pc[0] = PIECE_MAP[side][PAWN_IDX];
+            dp.from[0] = from;
+            dp.to[0] = 64;
+            dp.pc[1] = PIECE_MAP[side][promoType];
+            dp.from[1] = 64;
+            dp.to[1] = to;
+            int capPc = (undo.capturedPiece >= 0 && undo.capturedPiece < 6) ? undo.capturedPiece : PAWN_IDX;
+            dp.pc[2] = PIECE_MAP[opp][capPc];
+            dp.from[2] = to;
+            dp.to[2] = 64;
+        } else {
+            dp.dirtyNum = 2;
+            dp.pc[0] = PIECE_MAP[side][PAWN_IDX];
+            dp.from[0] = from;
+            dp.to[0] = 64;
+            dp.pc[1] = PIECE_MAP[side][promoType];
+            dp.from[1] = 64;
+            dp.to[1] = to;
+        }
+    }
+    else if (isEnPassant(m)) {
+        int epCapSq = (side == WHITE_SIDE) ? to - 8 : to + 8;
+        dp.dirtyNum = 2;
+        dp.pc[0] = PIECE_MAP[side][PAWN_IDX];
+        dp.from[0] = from;
+        dp.to[0] = to;
+        dp.pc[1] = PIECE_MAP[opp][PAWN_IDX];
+        dp.from[1] = epCapSq;
+        dp.to[1] = 64;
+    }
+    else if (isCapture(m)) {
+        dp.dirtyNum = 2;
+        if (movingPiece < 0 || movingPiece >= 6) movingPiece = PAWN_IDX;
+        dp.pc[0] = PIECE_MAP[side][movingPiece];
+        dp.from[0] = from;
+        dp.to[0] = to;
+        int capPc = (undo.capturedPiece >= 0 && undo.capturedPiece < 6) ? undo.capturedPiece : PAWN_IDX;
+        dp.pc[1] = PIECE_MAP[opp][capPc];
+        dp.from[1] = to;
+        dp.to[1] = 64;
+    }
+    else {
+        // Normal quiet move
+        dp.dirtyNum = 1;
+        if (movingPiece < 0 || movingPiece >= 6) movingPiece = PAWN_IDX;
+        dp.pc[0] = PIECE_MAP[side][movingPiece];
+        dp.from[0] = from;
+        dp.to[0] = to;
+    }
+}
+
+int SimpleEngine::evaluate(const BoardState& board, int activeColor, int ply) {
     if (is_nnue_loaded()) {
         static const int PIECE_MAP[2][6] = {
             // WHITE_SIDE: PAWN, KNIGHT, BISHOP, ROOK, QUEEN, KING
@@ -567,6 +691,15 @@ int SimpleEngine::evaluate(const BoardState& board, int activeColor) const {
         squares[count] = 0;
 
         int player = (activeColor == WHITE_SIDE) ? white : black;
+
+        if (ply >= 0 && ply < MAX_PLY + 16) {
+            NNUEdata* nnuePtrs[3];
+            nnuePtrs[0] = &nnueStack[ply].data;
+            nnuePtrs[1] = (ply >= 1) ? &nnueStack[ply - 1].data : nullptr;
+            nnuePtrs[2] = nullptr; // Strict parent-only update to guarantee zero skipped-ply desync
+            return nnue_evaluate_incremental(player, pieces, squares, nnuePtrs);
+        }
+
         return nnue_evaluate(player, pieces, squares);
     }
 

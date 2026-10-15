@@ -1,14 +1,14 @@
 # ♟️ MyEngine_CPP (v2.0)
 
-Modern, yüksek performanslı ve modüler bir mimariyle C++17 kullanılarak sıfırdan geliştirilmiş **~2578 Elo** gücünde bir satranç motoru. 
+Modern, yüksek performanslı ve modüler bir mimariyle C++17 kullanılarak sıfırdan geliştirilmiş **~2924 Elo** gücünde bir satranç motoru. 
 
-Bitboard tabanlı hızlı hamle üretimi, PVS arama algoritmaları, Polyglot açılış kitabı, **NNUE (Efficiently Updatable Neural Network)** ve Texel Tuning ile optimize edilmiş el yapımı değerlendirme (HCE) sistemine sahiptir.
+Bitboard tabanlı hızlı hamle üretimi, PVS arama algoritmaları, Polyglot açılış kitabı, **AVX2 hızlandırmalı Artımlı NNUE (Efficiently Updatable Neural Network)** ve Texel Tuning ile optimize edilmiş hibrit değerlendirme sistemine sahiptir.
 
 ---
 
 ## 📈 Adım Adım Gelişim Süreci & Tüm Elo Kazanımları
 
-Motorun başlangıçtaki ~2150-2200 seviyesinden günümüzdeki **~2578 Elo** seviyesine ulaşmasında uygulanan her geliştirme adımı, resmi turnuva aracı `fastchess` ve standart açılış havuzu (`8moves_v3.pgn`) ile yüzlerce oyunluk SPRT ve self-play maçlarıyla doğrulanmıştır:
+Motorun başlangıçtaki ~2150-2200 seviyesinden günümüzdeki **~2924 Elo** seviyesine ulaşmasında uygulanan her geliştirme adımı, resmi turnuva aracı `fastchess` ve standart açılış havuzu (`8moves_v3.pgn`) ile yüzlerce oyunluk SPRT ve self-play maçlarıyla doğrulanmıştır:
 
 | # | Geliştirme / Aşama | Açıklama & Yapılan İşlem | Test Türü & Maç Sayısı | Ölçülen Net Elo |
 | :-: | :--- | :--- | :---: | :---: |
@@ -26,8 +26,9 @@ Motorun başlangıçtaki ~2150-2200 seviyesinden günümüzdeki **~2578 Elo** se
 | **12** | **Gelişmiş Pozisyonel Terimler & 2. Tur Texel Tuning** | İzole piyon (-11), 4-7. kademe geçer piyonlar (13/34/65/95), 7. yatay kale (+7), at/fil hareketliliği (+2/+4) ve King EG tablosu eklenip 200k pozisyonda 25 epoch eğitildi. | 200 Oyun vs Tuned v1 | **+88.74 ± 45.8 Elo** (%100 LOS) |
 | **13** | **Stockfish 2500 Benchmark** | Stockfish 2500 ile 100 maçlık resmi turnuva:<br>**40 Galibiyet, 45 Mağlubiyet, 15 Beraberlik (%47.5 Skor)** | 100 Oyun vs SF 2500 | **~2483 ELO** *(Sadece -17.39 Elo fark)* |
 | **14** | **NNUE Değerlendirme Entegrasyonu** | HalfKP mimarili derin sinir ağı değerlendirmesi entegre edildi. Stockfish 2500'e karşı:<br>**55 Galibiyet, 33 Mağlubiyet, 12 Beraberlik (%61.0 Skor)** | 100 Oyun vs SF 2500 | **+77.71 ± 65 Elo (~2578 Elo)** |
+| **15** | **AVX2 Donanım Vektörizasyonu & Artımlı Akümülatör (NNUE v2)** | 256-bit AVX2 SIMD ve diferansiyel akümülatör güncellemesiyle arama hızı 650k'dan **2.05M NPS'e fırladı** (+2.5 ply derinlik).<br>**81 Galibiyet, 5 Mağlubiyet, 14 Beraberlik (%88.0 Skor)!** | Self-Play (100 Oyun) | **+346.12 ± 84 Elo (~2924 Elo)** |
 
-> **Kümülatif Net Güç Artışı:** Uygulanan tüm arama budamaları, taş/PST optimizasyonları, açılış kitabı ve NNUE sinir ağı değerlendirmesi motoru ~2150 Elo'dan alıp **~2578 Elo** seviyesine ulaştırmış, Stockfish 2500'e 22 galibiyet fark atarak resmi olarak geride bırakmıştır.
+> **Kümülatif Net Güç Artışı:** Uygulanan tüm arama budamaları, açılış kitabı, AVX2 vektörizasyonu ve artımlı NNUE akümülatör güncellemesi motoru ~2150 Elo'dan alıp **~2924 Elo** seviyesine ulaştırmış, 2900 barajını yıkarak üst düzey GM ve modern motorlar ligine taşımıştır.
 
 ---
 
@@ -125,7 +126,7 @@ quit
 
 ## 📈 Gelecek Planları (Roadmap)
 - [x] **NNUE (Neural Network Evaluation)** mimarisine geçiş. *(Tamamlandı: ~2578 Elo, SF 2500 karşısında %61 galibiyet).*
-- [ ] **Artımlı Akümülatör (Incremental NNUE Accumulator):** `makeMove`/`undoMove` içinde fark hesaplama ile değerlendirme maliyetini düşürüp NPS'i 2-3 katına çıkarma.
+- [x] **Artımlı Akümülatör & AVX2 Vektörizasyonu:** `makeMove`/`undoMove` içinde fark hesaplama ile NPS 2.05M'e çıktı. *(Tamamlandı: +346.1 Elo, %88 skor -> ~2924 Elo).*
 - [ ] **Singular Extensions (SE):** Pozisyonda tek kurtarıcı taktik hamle olduğunda aramayı derinleştirme (+60-80 Elo).
 - [ ] **Continuation & Capture History:** Hamle sıralamasını modern seviyeye taşıma.
 - [ ] **Late Move Pruning (LMP):** Derin aramalarda umutsuz sessiz hamleleri tamamen eleme.

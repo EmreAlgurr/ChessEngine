@@ -6,8 +6,11 @@
 #include <chrono>
 #include <vector>
 #include "TranspositionTable.h"
+#include "nnue.h"
 
-#include "TranspositionTable.h"
+struct alignas(64) NNUEdataAligned {
+    NNUEdata data;
+};
 
 enum MovePickerStage {
     STAGE_TT,
@@ -70,7 +73,7 @@ public:
     // "position" komutunda bunu doldurur. Tekrar tespiti icin kullanilir.
     void setGameHistory(const std::vector<uint64_t>& keys) { gameKeys = keys; }
 
-    int evaluate(const BoardState& board, int activeColor) const;
+    int evaluate(const BoardState& board, int activeColor, int ply = -1);
 
 private:
     TranspositionTable tt;
@@ -79,6 +82,9 @@ private:
     std::chrono::steady_clock::time_point searchEndTime;
     bool stopSearch;
     int64_t nodesSearched;
+
+    alignas(64) NNUEdataAligned nnueStack[MAX_PLY + 32];
+    void recordMoveNNUE(int nextPly, Move16 m, int movingPiece, int side, const UndoState& undo);
 
     uint16_t killerMoves[MAX_PLY][2];
     int history[2][64][64];
