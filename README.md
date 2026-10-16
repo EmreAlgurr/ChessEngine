@@ -10,7 +10,7 @@ Bitboard tabanlı hızlı hamle üretimi, PVS arama algoritmaları, Polyglot aç
 
 Motorun başlangıçtaki ~2150-2200 seviyesinden günümüzdeki **~2870 - 2970 Elo** seviyesine ulaşmasında uygulanan her geliştirme adımı, resmi turnuva aracı `fastchess` ve standart açılış havuzu (`8moves_v3.pgn`) ile yüzlerce oyunluk SPRT ve self-play maçlarıyla doğrulanmıştır:
 
-| # | Geliştirme / Aşama | Açıklama & Yapılan İşlem | Test Koşulu & Maç Sayısı | Net Elo Katkısı | Ulaşılan Seviye |
+| # | Geliştirme / Aşama | Açıklama & Yapılan İşlem | Test Koşulu & Maç Sayısı | Ölçülen Sonuç / Katkı | Ulaşılan Seviye |
 | :-: | :--- | :--- | :---: | :---: | :---: |
 | **1** | **MovePicker Refactoring** | Tek üretim (`generateAllMoves x1`) + tembel seçim (`lazy selection sort`) mimarisi. Düğüm başı 4x üretim kaldırıldı. | 100 Oyun (1+0.01s) | **+10.43 ± 41.5 Elo** | ~2160 Elo |
 | **2** | **3-Fold Repetition & Zobrist** | Arama yolu ve oyun geçmişi üzerinde tekrarların Zobrist hash ile taranması. | — | *Stabilite Artışı* | ~2160 Elo |
@@ -19,20 +19,20 @@ Motorun başlangıçtaki ~2150-2200 seviyesinden günümüzdeki **~2870 - 2970 E
 | **5** | **İlk Pozisyonel Değerlendirme** | Çift fil avantajı ve açık/yarı açık hatlardaki kalelere pozisyonel prim verilmesi. | 100 Oyun (1+0.01s) | **+70.44 ± 51.5 Elo** | ~2320 Elo |
 | **6** | **Basit Rok Bonusu (Simple Castle)** | Şah güvenliği için gereksiz karmaşık formüller yerine doğrudan başarılı rok pozisyonlarına prim verilmesi. | 440 Oyun SPRT | **+36.46 ± 27.0 Elo** | ~2340 Elo |
 | **7** | **Arama Budamaları (RFP & FP)** | Reverse Futility Pruning (Static Null Move) ve Futility Pruning ile umutsuz dalların erkenden budanması. | 460 Oyun SPRT | **+20.42 ± 28.7 Elo** | ~2355 Elo |
-| **8** | **Stockfish 2300 Benchmark** | Arama ve budama parametrelerinin dengelenmesi sonrası Stockfish 2300'e karşı ilk zafer (51/100, %51.0 skor). | 100 Oyun vs SF 2300 | **+3.50 ± 60.0 Elo** | ~2304 Elo |
+| **8** | **Stockfish 2300 Benchmark** | Arama ve budama parametrelerinin dengelenmesi sonrası Stockfish 2300'e karşı seviye testi (%51.0 skor). | 100 Oyun vs SF 2300 | **vs SF 2300: +3.50 Elo** | ~2304 Elo |
 | **9** | **1. Aşama Texel Tuning** | 100k sessiz pozisyonda taş değerleri ve 6 adet PST tablosunun çok iş parçacıklı yerel arama ile eğitilmesi. | 100 Oyun Self-Play | **+152.40 Elo** | ~2376 Elo |
 | **10** | **Polyglot Açılış Kitabı** | 30.000 GM pozisyonlu `gm2001.bin` entegrasyonu (0 ms açılış hamlesi ve varyant avantajı). | 100 Oyun Self-Play | **+56.10 Elo** | ~2430 Elo |
 | **11** | **Zaman Ölçekleme Testi (3+0)** | Süre uzadığında arama derinliğinin testi. Stockfish 2400'e karşı 4/4 maç (%100) kazanıldı. | 4 Oyun vs SF 2400 | *Derinlik Doğrulandı* | ~2450 Elo |
 | **12** | **Gelişmiş Pozisyonel Terimler & 2. Tur Texel Tuning** | İzole piyon (-11), 4-7. kademe geçer piyonlar (13/34/65/95), 7. yatay kale (+7), at/fil hareketliliği ve King EG tablosu. | 200 Oyun vs Tuned v1 | **+88.74 ± 45.8 Elo** | ~2480 Elo |
-| **13** | **Stockfish 2500 Benchmark** | Stockfish 2500 ile 100 maçlık resmi turnuva (40 Galibiyet, 45 Mağlubiyet, 15 Beraberlik, %47.5 skor). | 100 Oyun vs SF 2500 | **-17.39 ± 60.0 Elo** | ~2483 Elo |
-| **14** | **NNUE Değerlendirme Entegrasyonu** | HalfKP mimarili derin sinir ağı değerlendirmesi entegre edildi (55 Galibiyet, 33 Mağlubiyet, 12 Beraberlik, %61.0 skor). | 100 Oyun vs SF 2500 | **+77.71 ± 65.0 Elo** | ~2578 Elo |
+| **13** | **Stockfish 2500 Benchmark** | Motorun gelişimi sonrası Stockfish 2500 seviyesine karşı referans maçı (40G, 45M, 15B, %47.5 skor). | 100 Oyun vs SF 2500 | **vs SF 2500: -17.39 Elo** | ~2483 Elo |
+| **14** | **NNUE Değerlendirme Entegrasyonu** | HalfKP mimarili derin sinir ağı değerlendirmesi entegre edildi (55G, 33M, 12B, %61.0 skor). | 100 Oyun vs SF 2500 | **+77.71 ± 65.0 Elo** | ~2578 Elo |
 | **15** | **AVX2 Donanım Vektörizasyonu & Artımlı Akümülatör** | 256-bit AVX2 SIMD ve diferansiyel akümülatör güncellemesi ile arama hızı 650k değerinden 2.05M NPS seviyesine yükseltildi (+2.5 ply). | 100 Oyun Self-Play | **+346.12 ± 84.0 Elo** | ~2731 Elo |
 | **16** | **NMP Optimizasyonu & Logaritmik LMR & SE** | Boş hamle budamasında statik değerlendirme (`staticEval >= beta`), dinamik $R$, logaritmik LMR ve Singular Extensions. | 680 Oyun vs SF 2900 (1+0.01s) | **+35.62 ± 25.4 Elo** | ~2767 Elo |
 | **17** | **Late Move Pruning (LMP) & Çift Kademeli Zaman Yönetimi** | Sığ derinliklerde ($\text{depth} \le 4$) sessiz hamlelerin budanması ve arama verimini artıran Soft/Hard Time Limit sistemi. | 440 Oyun vs SF 2900 (2+0.02s) | **+75.00 ± 29.4 Elo** | ~2842 Elo |
 | **18** | **Kök Aspiration Yeniden Sıralaması (Root Re-ordering)** | Kök aramasında dar pencerede fail-high üreten hamlenin pencere genişletme döngüsünde anında en başa taşınması. | 100 Oyun vs v2_LMP (2+0.02s) | **+27.85 ± 45.0 Elo** | ~2870 Elo |
-| **19** | **Klasik Zaman Kontrolü Benchmark (60+0.6)** | Stockfish 2900'e karşı turnuva temposunda resmi test (10 Galibiyet, 6 Mağlubiyet, 4 Beraberlik, %60.0 skor). | 20 Oyun vs SF 2900 (60+0.6s) | **+70.44 ± 185.8 Elo** | **~2970 Elo** |
+| **19** | **60s + 0.6s Testi** | Stockfish 2900'e karşı 60 saniye + 0.6s süreli test (10 Galibiyet, 6 Mağlubiyet, 4 Beraberlik, %60.0 skor). | 20 Oyun vs SF 2900 (60+0.6s) | **vs SF 2900: +70.44 Elo** | **~2970 Elo** |
 
-> **Kümülatif Net Güç Artışı:** Uygulanan gelişmiş arama budamaları (NMP, RFP, LMP, LMR), Singular Extensions, kök aspiration optimizasyonu, artımlı AVX2 NNUE çıkarımı ve optimize edilmiş zaman yönetimi sonucunda motor, klasik değerlendirme seviyesi olan ~2150 Elo'dan yıldırımda **~2870 Elo**, klasik zaman kontrolünde ise **~2970 Elo** seviyesine ulaştırılmıştır.
+> **Kümülatif Net Güç Artışı:** Uygulanan gelişmiş arama budamaları (NMP, RFP, LMP, LMR), Singular Extensions, kök aspiration optimizasyonu, artımlı AVX2 NNUE çıkarımı ve optimize edilmiş zaman yönetimi sonucunda motor, klasik değerlendirme seviyesi olan ~2150 Elo'dan yıldırımda **~2870 Elo**, 60 saniye + 0.6s sürede ise **~2970 Elo** seviyesine ulaştırılmıştır.
 
 ---
 
