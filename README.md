@@ -1,6 +1,6 @@
 # ♟️ MyEngine_CPP (v2.0)
 
-Modern, yüksek performanslı ve modüler bir mimariyle C++17 kullanılarak sıfırdan geliştirilmiş **~2924 Elo** gücünde bir satranç motoru. 
+Modern, yüksek performanslı ve modüler bir mimariyle C++17 kullanılarak sıfırdan geliştirilmiş **~2870 - 2970 Elo** gücünde bir satranç motoru. 
 
 Bitboard tabanlı hızlı hamle üretimi, PVS arama algoritmaları, Polyglot açılış kitabı, **AVX2 hızlandırmalı Artımlı NNUE (Efficiently Updatable Neural Network)** ve Texel Tuning ile optimize edilmiş hibrit değerlendirme sistemine sahiptir.
 
@@ -8,7 +8,7 @@ Bitboard tabanlı hızlı hamle üretimi, PVS arama algoritmaları, Polyglot aç
 
 ## 📈 Adım Adım Gelişim Süreci & Tüm Elo Kazanımları
 
-Motorun başlangıçtaki ~2150-2200 seviyesinden günümüzdeki **~2870 Elo** seviyesine ulaşmasında uygulanan her geliştirme adımı, resmi turnuva aracı `fastchess` ve standart açılış havuzu (`8moves_v3.pgn`) ile yüzlerce oyunluk SPRT ve self-play maçlarıyla doğrulanmıştır:
+Motorun başlangıçtaki ~2150-2200 seviyesinden günümüzdeki **~2870 - 2970 Elo** seviyesine ulaşmasında uygulanan her geliştirme adımı, resmi turnuva aracı `fastchess` ve standart açılış havuzu (`8moves_v3.pgn`) ile yüzlerce oyunluk SPRT ve self-play maçlarıyla doğrulanmıştır:
 
 | # | Geliştirme / Aşama | Açıklama & Yapılan İşlem | Test Koşulu & Maç Sayısı | Net Elo Katkısı | Ulaşılan Seviye |
 | :-: | :--- | :--- | :---: | :---: | :---: |
@@ -29,9 +29,10 @@ Motorun başlangıçtaki ~2150-2200 seviyesinden günümüzdeki **~2870 Elo** se
 | **15** | **AVX2 Donanım Vektörizasyonu & Artımlı Akümülatör** | 256-bit AVX2 SIMD ve diferansiyel akümülatör güncellemesi ile arama hızı 650k değerinden 2.05M NPS seviyesine yükseltildi (+2.5 ply). | 100 Oyun Self-Play | **+346.12 ± 84.0 Elo** | ~2731 Elo |
 | **16** | **NMP Optimizasyonu & Logaritmik LMR & SE** | Boş hamle budamasında statik değerlendirme (`staticEval >= beta`), dinamik $R$, logaritmik LMR ve Singular Extensions. | 680 Oyun vs SF 2900 (1+0.01s) | **+35.62 ± 25.4 Elo** | ~2767 Elo |
 | **17** | **Late Move Pruning (LMP) & Çift Kademeli Zaman Yönetimi** | Sığ derinliklerde ($\text{depth} \le 4$) sessiz hamlelerin budanması ve arama verimini artıran Soft/Hard Time Limit sistemi. | 440 Oyun vs SF 2900 (2+0.02s) | **+75.00 ± 29.4 Elo** | ~2842 Elo |
-| **18** | **Kök Aspiration Yeniden Sıralaması (Root Re-ordering)** | Kök aramasında dar pencerede fail-high üreten hamlenin pencere genişletme döngüsünde anında en başa taşınması. | 100 Oyun vs v2_LMP (2+0.02s) | **+27.85 ± 45.0 Elo** | **~2870 Elo** |
+| **18** | **Kök Aspiration Yeniden Sıralaması (Root Re-ordering)** | Kök aramasında dar pencerede fail-high üreten hamlenin pencere genişletme döngüsünde anında en başa taşınması. | 100 Oyun vs v2_LMP (2+0.02s) | **+27.85 ± 45.0 Elo** | ~2870 Elo |
+| **19** | **Klasik Zaman Kontrolü Benchmark (60+0.6)** | Stockfish 2900'e karşı turnuva temposunda resmi test (10 Galibiyet, 6 Mağlubiyet, 4 Beraberlik, %60.0 skor). | 20 Oyun vs SF 2900 (60+0.6s) | **+70.44 ± 185.8 Elo** | **~2970 Elo** |
 
-> **Kümülatif Net Güç Artışı:** Uygulanan gelişmiş arama budamaları (NMP, RFP, LMP, LMR), Singular Extensions, kök aspiration optimizasyonu, artımlı AVX2 NNUE çıkarımı ve optimize edilmiş zaman yönetimi sonucunda motor, klasik değerlendirme seviyesi olan ~2150 Elo'dan **~2870 Elo** seviyesine ulaştırılmıştır.
+> **Kümülatif Net Güç Artışı:** Uygulanan gelişmiş arama budamaları (NMP, RFP, LMP, LMR), Singular Extensions, kök aspiration optimizasyonu, artımlı AVX2 NNUE çıkarımı ve optimize edilmiş zaman yönetimi sonucunda motor, klasik değerlendirme seviyesi olan ~2150 Elo'dan yıldırımda **~2870 Elo**, klasik zaman kontrolünde ise **~2970 Elo** seviyesine ulaştırılmıştır.
 
 ---
 
