@@ -14,10 +14,8 @@ struct alignas(64) NNUEdataAligned {
 
 enum MovePickerStage {
     STAGE_TT,
-    STAGE_GEN_CAPTURES,
     STAGE_GOOD_CAPTURES,
     STAGE_KILLERS,
-    STAGE_GEN_QUIETS,
     STAGE_QUIETS,
     STAGE_BAD_CAPTURES
 };

@@ -1207,7 +1207,7 @@ Move16 MovePicker::nextMove() {
                 }
                 return 0; // HAMLE BİTTİ
 
-            default: // STAGE_GEN_CAPTURES / STAGE_GEN_QUIETS artık kullanılmıyor
+            default:
                 return 0;
         }
     }
