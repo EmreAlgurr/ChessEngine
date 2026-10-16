@@ -162,6 +162,7 @@ Move16 SimpleEngine::getBestMove(BoardState& board, int color, long timeLimitMs)
     // 0. Açılış Kitabı (Book move varsa 0 ms'de anında oyna)
     Move16 bookMove = openingBook.getBookMove(board);
     if (bookMove != MOVE_NONE) {
+        std::cout << "info depth 1 score cp 0 pv " << moveToUCI(bookMove) << std::endl;
         return bookMove;
     }
 
@@ -367,20 +368,22 @@ int SimpleEngine::negamax(BoardState& board, int depth, int ply, int alpha, int 
     bool inCheck = board.isSquareAttacked(board.getKingSquare(color), enemyColor);
 
     int staticEval = 0;
-    if (!inCheck && depth <= 4) {
+    if (!inCheck) {
         staticEval = evaluate(board, color, ply);
     }
 
     // REVERSE FUTILITY PRUNING (RFP / Static Null Move Pruning)
-    if (!inCheck && depth <= 4 && std::abs(beta) < 900000) {
-        int rfpMargin = 80 * depth;
+    if (!inCheck && depth <= 6 && std::abs(beta) < 900000) {
+        int rfpMargin = 75 * depth;
         if (staticEval - rfpMargin >= beta) {
             return beta;
         }
     }
 
     // NULL MOVE PRUNING (NMP)
-    if (allowNull && !inCheck && depth >= 3 && board.hasNonPawnMaterial(color)) {
+    // Sadece staticEval >= beta iken (pozisyon zaten beta'yı geçebilecek güçteyken) boş hamle dene!
+    // Dinamik R: derinlik arttıkça daha agresif indirgeme (3 + depth/6).
+    if (allowNull && !inCheck && depth >= 3 && staticEval >= beta && board.hasNonPawnMaterial(color)) {
         
         UndoState nullUndo;
         board.makeNullMove(nullUndo); 
@@ -390,7 +393,7 @@ int SimpleEngine::negamax(BoardState& board, int depth, int ply, int alpha, int 
             nnueStack[ply + 1].data.accumulator.computedAccumulation = 0;
         }
         
-        int R = 2; // Reduction
+        int R = 3 + depth / 6; // Dynamic reduction
         int nullScore = -negamax(board, depth - 1 - R, ply + 1, -beta, -beta + 1, enemyColor, false);
         
         board.undoNullMove(nullUndo); 
