@@ -79,7 +79,8 @@ private:
     TranspositionTable tt;
     int maxDepth;
     static constexpr int MAX_PLY = 128;
-    std::chrono::steady_clock::time_point searchEndTime;
+    std::chrono::steady_clock::time_point searchSoftEndTime;
+    std::chrono::steady_clock::time_point searchHardEndTime;
     bool stopSearch;
     int64_t nodesSearched;
 

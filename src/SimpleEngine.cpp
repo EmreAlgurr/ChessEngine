@@ -154,9 +154,13 @@ Move16 SimpleEngine::getBestMove(BoardState& board, int color, long timeLimitMs)
     }
 
     if (timeLimitMs > 0) {
-        searchEndTime = startTime + std::chrono::milliseconds(timeLimitMs);
+        long softLimitMs = static_cast<long>(timeLimitMs * 0.60);
+        if (softLimitMs < 5) softLimitMs = std::max(1L, timeLimitMs - 5);
+        searchSoftEndTime = startTime + std::chrono::milliseconds(softLimitMs);
+        searchHardEndTime = startTime + std::chrono::milliseconds(timeLimitMs);
     } else {
-        searchEndTime = std::chrono::steady_clock::time_point::max();
+        searchSoftEndTime = std::chrono::steady_clock::time_point::max();
+        searchHardEndTime = std::chrono::steady_clock::time_point::max();
     }
 
     // 0. Açılış Kitabı (Book move varsa 0 ms'de anında oyna)
@@ -294,7 +298,10 @@ Move16 SimpleEngine::getBestMove(BoardState& board, int color, long timeLimitMs)
                       << " pv " << moveToUCI(bestMove) << std::endl;
         }
 
-        if (std::chrono::steady_clock::now() >= searchEndTime) break;
+        // Yumuşak Zaman Sınırı (Soft Time Limit):
+        // Sürenin %60'ından fazlası harcandıysa, bir sonraki derinlik kesinlikle yarım kalacaktır.
+        // Bu yüzden yeni derinliğe girmeden mevcut en iyi tamamlanmış hamleyle çık!
+        if (std::chrono::steady_clock::now() >= searchSoftEndTime) break;
     }
 
     if (hasBestMove && completedDepth == 0) {
@@ -342,7 +349,7 @@ int SimpleEngine::negamax(BoardState& board, int depth, int ply, int alpha, int 
     nodesSearched++;
 
     if ((nodesSearched & 2047) == 0) {
-        if (std::chrono::steady_clock::now() >= searchEndTime) stopSearch = true;
+        if (std::chrono::steady_clock::now() >= searchHardEndTime) stopSearch = true;
     }
     if (stopSearch) return 0;
 
@@ -579,7 +586,7 @@ int SimpleEngine::quiescence(BoardState& board, int alpha, int beta, int ply, in
     nodesSearched++;
 
     if ((nodesSearched & 2047) == 0) {
-        if (std::chrono::steady_clock::now() >= searchEndTime) stopSearch = true;
+        if (std::chrono::steady_clock::now() >= searchHardEndTime) stopSearch = true;
     }
     if (stopSearch) return 0;
 
