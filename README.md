@@ -26,9 +26,11 @@ Motorun başlangıçtaki ~2150-2200 seviyesinden günümüzdeki **~2924 Elo** se
 | **12** | **Gelişmiş Pozisyonel Terimler & 2. Tur Texel Tuning** | İzole piyon (-11), 4-7. kademe geçer piyonlar (13/34/65/95), 7. yatay kale (+7), at/fil hareketliliği (+2/+4) ve King EG tablosu eklenip 200k pozisyonda 25 epoch eğitildi. | 200 Oyun vs Tuned v1 | **+88.74 ± 45.8 Elo** (%100 LOS) |
 | **13** | **Stockfish 2500 Benchmark** | Stockfish 2500 ile 100 maçlık resmi turnuva:<br>**40 Galibiyet, 45 Mağlubiyet, 15 Beraberlik (%47.5 Skor)** | 100 Oyun vs SF 2500 | **~2483 ELO** *(Sadece -17.39 Elo fark)* |
 | **14** | **NNUE Değerlendirme Entegrasyonu** | HalfKP mimarili derin sinir ağı değerlendirmesi entegre edildi. Stockfish 2500'e karşı:<br>**55 Galibiyet, 33 Mağlubiyet, 12 Beraberlik (%61.0 Skor)** | 100 Oyun vs SF 2500 | **+77.71 ± 65 Elo (~2578 Elo)** |
-| **15** | **AVX2 Donanım Vektörizasyonu & Artımlı Akümülatör (NNUE v2)** | 256-bit AVX2 SIMD ve diferansiyel akümülatör güncellemesiyle arama hızı 650k'dan **2.05M NPS'e fırladı** (+2.5 ply derinlik).<br>**81 Galibiyet, 5 Mağlubiyet, 14 Beraberlik (%88.0 Skor)!** | Self-Play (100 Oyun) | **+346.12 ± 84 Elo (~2924 Elo)** |
+| **15** | **AVX2 Donanım Vektörizasyonu & Artımlı Akümülatör (NNUE v2)** | 256-bit AVX2 SIMD ve diferansiyel akümülatör güncellemesi ile arama hızı 650k değerinden **2.05M NPS seviyesine yükseltildi** (+2.5 ply derinlik artışı).<br>**81 Galibiyet, 5 Mağlubiyet, 14 Beraberlik (%88.0 Skor)** | Self-Play (100 Oyun) | **+346.12 ± 84 Elo** |
+| **16** | **NMP Optimizasyonu & Logaritmik LMR & Singular Extensions** | Boş hamle budamasında (NMP) statik değerlendirme koşulu (`staticEval >= beta`) ve dinamik $R$ indirgemesi getirildi. Logaritmik LMR ve tekil taktik hamleleri uzatan Singular Extensions (SE) entegre edildi.<br>**144 Galibiyet, 393 Mağlubiyet, 143 Beraberlik (%31.7 Skor)** | 680 Oyun vs SF 2900 (1+0.01s) | **~2767 Elo** *(-133.42 Elo fark)* |
+| **17** | **Late Move Pruning (LMP) & Çift Kademeli Zaman Yönetimi** | Sığ derinliklerde ($\text{depth} \le 4$) umutsuz sessiz hamlelerin budanması (LMP) ve iterasyon tamamlama verimini artıran Soft/Hard Time Limit sistemi uygulandı.<br>**136 Galibiyet, 209 Mağlubiyet, 95 Beraberlik (%41.7 Skor, 21 Çift Galibiyet)** | 440 Oyun vs SF 2900 (2+0.02s) | **~2842 Elo** *(Sadece -58.18 Elo fark)* |
 
-> **Kümülatif Net Güç Artışı:** Uygulanan tüm arama budamaları, açılış kitabı, AVX2 vektörizasyonu ve artımlı NNUE akümülatör güncellemesi motoru ~2150 Elo'dan alıp **~2924 Elo** seviyesine ulaştırmış, 2900 barajını yıkarak üst düzey GM ve modern motorlar ligine taşımıştır.
+> **Kümülatif Net Güç Artışı:** Uygulanan gelişmiş arama budamaları (NMP, RFP, LMP, LMR), Singular Extensions, artımlı AVX2 NNUE çıkarımı ve optimize edilmiş zaman yönetimi sonucunda motor, klasik değerlendirme seviyesi olan ~2150 Elo'dan **~2842 Elo** seviyesine ulaştırılmış ve Stockfish 2900 karşısında %41.7 başarı oranına erişmiştir.
 
 ---
 
@@ -126,7 +128,8 @@ quit
 
 ## 📈 Gelecek Planları (Roadmap)
 - [x] **NNUE (Neural Network Evaluation)** mimarisine geçiş. *(Tamamlandı: ~2578 Elo, SF 2500 karşısında %61 galibiyet).*
-- [x] **Artımlı Akümülatör & AVX2 Vektörizasyonu:** `makeMove`/`undoMove` içinde fark hesaplama ile NPS 2.05M'e çıktı. *(Tamamlandı: +346.1 Elo, %88 skor -> ~2924 Elo).*
-- [ ] **Singular Extensions (SE):** Pozisyonda tek kurtarıcı taktik hamle olduğunda aramayı derinleştirme (+60-80 Elo).
-- [ ] **Continuation & Capture History:** Hamle sıralamasını modern seviyeye taşıma.
-- [ ] **Late Move Pruning (LMP):** Derin aramalarda umutsuz sessiz hamleleri tamamen eleme.
+- [x] **Artımlı Akümülatör & AVX2 Vektörizasyonu:** `makeMove`/`undoMove` içinde fark hesaplama ile NPS 2.05M seviyesine yükseltildi.
+- [x] **Singular Extensions (SE):** Pozisyonda tekil taktik hamle tespiti ve arama derinleştirme.
+- [x] **Late Move Pruning (LMP) & Soft/Hard Time Limit:** Sığ derinlik budaması ve zamanlama optimizasyonu *(Tamamlandı: ~2842 Elo, SF 2900 karşısında %41.7 skor).*
+- [ ] **Root Aspiration Re-ordering:** Kök düğümde fail-high hamlelerinin bir sonraki iterasyonda önceliklendirilmesi.
+- [ ] **Capture SEE Pruning & Continuation History:** Taktik ve sessiz hamle sıralamasının geliştirilmesi.

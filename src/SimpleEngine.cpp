@@ -263,6 +263,18 @@ Move16 SimpleEngine::getBestMove(BoardState& board, int color, long timeLimitMs)
                 else if (maxScore >= beta) {
                     beta = std::min(999999, beta + delta);
                     delta += delta / 2;
+                    // Fail-high üreten hamleyi kök listesinde en başa taşı (anında cutoff için)
+                    if (currentBest != MOVE_NONE) {
+                        for (int i = 0; i < rootMoves.count; i++) {
+                            if (rootMoves.moves[i] == currentBest) {
+                                for (int j = i; j > 0; j--) {
+                                    rootMoves.moves[j] = rootMoves.moves[j - 1];
+                                }
+                                rootMoves.moves[0] = currentBest;
+                                break;
+                            }
+                        }
+                    }
                 }
 
                 // Pencere çok genişlediyse sonsuz pencereye dön
