@@ -476,6 +476,17 @@ int SimpleEngine::negamax(BoardState& board, int depth, int ply, int alpha, int 
             }
         }
 
+        // LATE MOVE PRUNING (LMP / Move Count Pruning)
+        // Derinlik 1-4 arasında, şah altında değilsek ve kritik olmayan sessiz hamle sayısı
+        // güvenli eşiği (3 + 3 * d * d) aştıysa, kalan umutsuz sessiz hamleleri atla.
+        if (!inCheck && depth <= 4 && isQuietMove && !givesCheck && std::abs(alpha) < 900000) {
+            int lmpThreshold = 3 + 3 * depth * depth;
+            if (legalCount > lmpThreshold) {
+                board.undoMove(move, undo);
+                continue;
+            }
+        }
+
         int extension = 0;
         if (givesCheck && ply < MAX_PLY) {
             extension = 1;
