@@ -32,7 +32,7 @@ Motorun başlangıçtaki ~2150-2200 seviyesinden günümüzdeki **~3000 - 3050 E
 | **18** | **History Malus Heuristiği** | Beta kesmesi üreten sessiz hamleden önce aranan ve kesme üretemeyen tüm sessiz hamlelere ceza puanı verilmesi. | 100 Oyun Self-Play (2+0.02s) | **+13.90 ± 50.3 Elo** | ~3014 Elo |
 | **19** | **Dinamik Hash (64MB TT)** | Transposition Table bellek tahsisinin UCI `option Hash` ile dinamik boyutlandırılması ve varsayılanın 64MB'a çıkarılması. | 100 Oyun Self-Play (2+0.02s) | **+13.90 ± 44.3 Elo** | ~3028 Elo |
 | **20** | **Capture History Heuristiği** | Beta kesmesine sebep olan taş alış hamlelerinin geçmiş tablosuna kaydedilerek MovePicker'da önceliklendirilmesi. | 80 Oyun Self-Play (2+0.02s) | **+17.39 ± 54.1 Elo** | ~3045 Elo |
-| **21** | **Stockfish 3000 Resmi Şampiyonluk Testi** | Stockfish 3000'e karşı resmi doğrulama turnuvası (10 Galibiyet, 7 Mağlubiyet, 3 Beraberlik, %57.5 skor). | 20 Oyun vs SF 3000 (10+0.1s) | **vs SF 3000: +52.51 Elo** | **~3052 Elo** |
+| **21** | **Stockfish 3000 Testi** | Stockfish 3000'e karşı resmi doğrulama turnuvası (10 Galibiyet, 7 Mağlubiyet, 3 Beraberlik, %57.5 skor). | 20 Oyun vs SF 3000 (10+0.1s) | **vs SF 3000: +52.51 Elo** | **~3052 Elo** |
 
 > **Kümülatif Net Güç Artışı:** Uygulanan Quiescence SEE budaması, History Malus, 64MB Dinamik Transposition Table, Capture History heuristiği ve artımlı AVX2 NNUE çıkarımı sonucunda motor, resmi olarak **Stockfish 3000'i geride bırakarak 3050+ Elo seviyesine ulaşmıştır.**
 
