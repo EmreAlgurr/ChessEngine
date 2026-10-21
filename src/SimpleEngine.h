@@ -37,6 +37,7 @@ struct MovePicker {
     uint16_t killer1;
     uint16_t killer2;
     int (*history)[64][64];
+    int (*captureHistory)[64][6];
 
     MovePickerStage stage;
     Move16 moves[256];
@@ -48,7 +49,7 @@ struct MovePicker {
     bool   killer1Ok;   // killer1 bu pozisyonda pseudo-legal mi?
     bool   killer2Ok;
 
-    MovePicker(BoardState& b, uint16_t ttM, uint16_t k1, uint16_t k2, int hist[2][64][64]);
+    MovePicker(BoardState& b, uint16_t ttM, uint16_t k1, uint16_t k2, int hist[2][64][64], int capHist[64][64][6]);
     Move16 nextMove();
 
 private:
@@ -88,6 +89,7 @@ private:
 
     uint16_t killerMoves[MAX_PLY][2];
     int history[2][64][64];
+    int captureHistory[64][64][6];
 
     // --- Tekrar (repetition) tespiti ---
     static constexpr int MAX_GAME_KEYS = 1024;

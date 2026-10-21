@@ -122,6 +122,13 @@ void SimpleEngine::clearHistoryAndKillers() {
             }
         }
     }
+    for (int f = 0; f < 64; f++) {
+        for (int t = 0; t < 64; t++) {
+            for (int p = 0; p < 6; p++) {
+                captureHistory[f][t][p] = 0;
+            }
+        }
+    }
 }
 
 Move16 SimpleEngine::getBestMove(BoardState& board, int color, long timeLimitMs) {
@@ -445,7 +452,7 @@ int SimpleEngine::negamax(BoardState& board, int depth, int ply, int alpha, int 
     }
 
     // Move Picker Initialization
-    MovePicker picker(board, ttMove, killerMoves[ply][0], killerMoves[ply][1], history);
+    MovePicker picker(board, ttMove, killerMoves[ply][0], killerMoves[ply][1], history, captureHistory);
 
     int maxScore = -999999;
     int legalCount = 0;
@@ -593,6 +600,14 @@ int SimpleEngine::negamax(BoardState& board, int depth, int ply, int alpha, int 
                     Move16 qm = quietMoves[qi];
                     int& qhist = history[color][moveFrom(qm)][moveTo(qm)];
                     qhist -= bonus - (qhist * std::abs(bonus) / MAX_HISTORY);
+                }
+            } else if (isCapture(move)) {
+                int bonus = depth * depth;
+                int MAX_HISTORY = 16384;
+                int capPt = undo.capturedPiece;
+                if (capPt >= 0 && capPt < 6) {
+                    int& chist = captureHistory[moveFrom(move)][moveTo(move)][capPt];
+                    chist += bonus - (chist * std::abs(bonus) / MAX_HISTORY);
                 }
             }
             break; 
@@ -1082,8 +1097,8 @@ int SimpleEngine::scoreMove(Move16 m, const BoardState& board, uint16_t ttMove, 
 //  seçer. Hamle SIRASI eski sürümle birebir aynıdır (stabil seçim), yani
 //  sabit derinlikte arama ağacı / node sayısı değişmez; sadece hız artar.
 // ============================================================
-MovePicker::MovePicker(BoardState& b, uint16_t ttM, uint16_t k1, uint16_t k2, int hist[2][64][64])
-    : board(b), ttMove(ttM), killer1(k1), killer2(k2), history(hist),
+MovePicker::MovePicker(BoardState& b, uint16_t ttM, uint16_t k1, uint16_t k2, int hist[2][64][64], int capHist[64][64][6])
+    : board(b), ttMove(ttM), killer1(k1), killer2(k2), history(hist), captureHistory(capHist),
       stage(STAGE_TT), moveIndex(0), goodEnd(0), quietEnd(0), badEnd(0),
       killer1Ok(false), killer2Ok(false) {
 }
@@ -1114,7 +1129,18 @@ void MovePicker::generateAndPartition() {
         int see = board.getSEE(m);
         if (see >= 0) {
             moves[n]  = m;
-            scores[n] = isCapture(m) ? see : 90000; // queen promo push = 90000
+            int capScore = 0;
+            if (isCapture(m)) {
+                int victim = board.pieceOnSquare(moveTo(m));
+                int capHistVal = 0;
+                if (victim >= 0 && victim < 6 && captureHistory) {
+                    capHistVal = captureHistory[moveFrom(m)][moveTo(m)][victim];
+                }
+                capScore = see * 100 + capHistVal;
+            } else {
+                capScore = 90000; // queen promo push
+            }
+            scores[n] = capScore;
             n++;
         } else {
             bad[badCount++] = m;
