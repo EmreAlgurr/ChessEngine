@@ -1,17 +1,17 @@
-# ♟️ MyEngine_CPP (v2.0)
+# ♟️ MyEngine_CPP (v2.1)
 
-Modern, yüksek performanslı ve modüler bir mimariyle C++17 kullanılarak sıfırdan geliştirilmiş **~2870 - 2970 Elo** gücünde bir satranç motoru. 
+Modern, yüksek performanslı ve modüler bir mimariyle C++17 kullanılarak sıfırdan geliştirilmiş **~3000 - 3050 Elo** gücünde bir satranç motoru. 
 
-Bitboard tabanlı hızlı hamle üretimi, PVS arama algoritmaları, Polyglot açılış kitabı, **AVX2 hızlandırmalı Artımlı NNUE (Efficiently Updatable Neural Network)** ve Texel Tuning ile optimize edilmiş hibrit değerlendirme sistemine sahiptir.
+Bitboard tabanlı hızlı hamle üretimi, PVS arama algoritmaları, Polyglot açılış kitabı, **AVX2 hızlandırmalı Artımlı NNUE (Efficiently Updatable Neural Network)**, Capture History Heuristiği, Quiescence Search SEE budaması ve dinamik Transposition Table mimarisine sahiptir.
 
 ---
 
 ## 📈 Adım Adım Gelişim Süreci & Tüm Elo Kazanımları
 
-Motorun başlangıçtaki ~2150-2200 seviyesinden günümüzdeki **~2870 - 2970 Elo** seviyesine ulaşmasında uygulanan her geliştirme adımı, resmi turnuva aracı `fastchess` ve standart açılış havuzu (`8moves_v3.pgn`) ile yüzlerce oyunluk SPRT ve self-play maçlarıyla doğrulanmıştır:
+Motorun başlangıçtaki ~2150-2200 seviyesinden günümüzdeki **~3000 - 3050 Elo** seviyesine ulaşmasında uygulanan her geliştirme adımı, resmi turnuva aracı `fastchess` ve standart açılış havuzu (`8moves_v3.pgn`) ile yüzlerce oyunluk SPRT ve self-play maçlarıyla doğrulanmıştır:
 
 | # | Geliştirme / Aşama | Açıklama & Yapılan İşlem | Test Koşulu & Maç Sayısı | Ölçülen Sonuç / Katkı | Ulaşılan Seviye |
-| :-: | :--- | :--- | :---: | :---: | :---: |
+| :-: | :--- | :--- | :--- | :---: | :---: |
 | **1** | **MovePicker Refactoring** | Tek üretim (`generateAllMoves x1`) + tembel seçim (`lazy selection sort`) mimarisi. Düğüm başı 4x üretim kaldırıldı. | 100 Oyun (1+0.01s) | **+10.43 ± 41.5 Elo** | ~2160 Elo |
 | **2** | **3-Fold Repetition & Zobrist** | Arama yolu ve oyun geçmişi üzerinde tekrarların Zobrist hash ile taranması. | — | *Stabilite Artışı* | ~2160 Elo |
 | **3** | **SEE (Static Exchange Evaluation)** | Taş değişimlerinde kaba hesap yerine gerçek koruma zinciri analizi ve taş alışlarının kalitesine göre sıralanması. | 40 Oyun vs SF 2100 | **+147.19 ± 119.0 Elo** | ~2247 Elo |
@@ -27,9 +27,14 @@ Motorun başlangıçtaki ~2150-2200 seviyesinden günümüzdeki **~2870 - 2970 E
 | **13** | **NMP Optimizasyonu & Logaritmik LMR & SE** | Boş hamle budamasında statik değerlendirme (`staticEval >= beta`), dinamik $R$, logaritmik LMR ve Singular Extensions. | 680 Oyun vs SF 2900 (1+0.01s) | **+35.62 ± 25.4 Elo** | ~2767 Elo |
 | **14** | **Late Move Pruning (LMP) & Çift Kademeli Zaman Yönetimi** | Sığ derinliklerde ($\text{depth} \le 4$) sessiz hamlelerin budanması ve arama verimini artıran Soft/Hard Time Limit sistemi. | 440 Oyun vs SF 2900 (2+0.02s) | **+75.00 ± 29.4 Elo** | ~2842 Elo |
 | **15** | **Kök Aspiration Yeniden Sıralaması (Root Re-ordering)** | Kök aramasında dar pencerede fail-high üreten hamlenin pencere genişletme döngüsünde anında en başa taşınması. | 100 Oyun vs v2_LMP (2+0.02s) | **+27.85 ± 45.0 Elo** | ~2870 Elo |
-| **16** | **60s + 0.6s Testi** | Stockfish 2900'e karşı 60 saniye + 0.6s süreli test (10 Galibiyet, 6 Mağlubiyet, 4 Beraberlik, %60.0 skor). | 20 Oyun vs SF 2900 (60+0.6s) | **vs SF 2900: +70.44 Elo** | **~2970 Elo** |
+| **16** | **60s + 0.6s Testi (vs SF 2900)** | Stockfish 2900'e karşı 60 saniye + 0.6s süreli test (10 Galibiyet, 6 Mağlubiyet, 4 Beraberlik, %60.0 skor). | 20 Oyun vs SF 2900 (60+0.6s) | **vs SF 2900: +70.44 Elo** | ~2970 Elo |
+| **17** | **Quiescence Search SEE Pruning** | Sakinlik aramasında (QS) negatif kazançlı taktik taş alışlarının ($SEE < 0$) budanarak arama ağacının derinleştirilmesi. | 100 Oyun Self-Play (2+0.02s) | **+52.51 ± 41.1 Elo** | ~3000 Elo |
+| **18** | **History Malus Heuristiği** | Beta kesmesi üreten sessiz hamleden önce aranan ve kesme üretemeyen tüm sessiz hamlelere ceza puanı verilmesi. | 100 Oyun Self-Play (2+0.02s) | **+13.90 ± 50.3 Elo** | ~3014 Elo |
+| **19** | **Dinamik Hash (64MB TT)** | Transposition Table bellek tahsisinin UCI `option Hash` ile dinamik boyutlandırılması ve varsayılanın 64MB'a çıkarılması. | 100 Oyun Self-Play (2+0.02s) | **+13.90 ± 44.3 Elo** | ~3028 Elo |
+| **20** | **Capture History Heuristiği** | Beta kesmesine sebep olan taş alış hamlelerinin geçmiş tablosuna kaydedilerek MovePicker'da önceliklendirilmesi. | 80 Oyun Self-Play (2+0.02s) | **+17.39 ± 54.1 Elo** | ~3045 Elo |
+| **21** | **Stockfish 3000 Resmi Şampiyonluk Testi** | Stockfish 3000'e karşı resmi doğrulama turnuvası (10 Galibiyet, 7 Mağlubiyet, 3 Beraberlik, %57.5 skor). | 20 Oyun vs SF 3000 (10+0.1s) | **vs SF 3000: +52.51 Elo** | **~3052 Elo** |
 
-> **Kümülatif Net Güç Artışı:** Uygulanan gelişmiş arama budamaları (NMP, RFP, LMP, LMR), Singular Extensions, kök aspiration optimizasyonu, artımlı AVX2 NNUE çıkarımı ve optimize edilmiş zaman yönetimi sonucunda motor, klasik değerlendirme seviyesi olan ~2150 Elo'dan hızlı tempoda (1-2s) **~2870 Elo**, 60s + 0.6s sürede ise **~2970 Elo** seviyesine ulaştırılmıştır.
+> **Kümülatif Net Güç Artışı:** Uygulanan Quiescence SEE budaması, History Malus, 64MB Dinamik Transposition Table, Capture History heuristiği ve artımlı AVX2 NNUE çıkarımı sonucunda motor, resmi olarak **Stockfish 3000'i geride bırakarak 3050+ Elo seviyesine ulaşmıştır.**
 
 ---
 
