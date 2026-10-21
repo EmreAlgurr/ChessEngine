@@ -81,6 +81,7 @@ void UCIEngine::run() {
 void UCIEngine::handleUCI() {
     std::cout << "id name MyEngine_CPP 1.0" << std::endl;
     std::cout << "id author Antigravity" << std::endl;
+    std::cout << "option name Hash type spin default 64 min 1 max 4096" << std::endl;
     std::cout << "option name OwnBook type check default true" << std::endl;
     std::cout << "option name BookFile type string default gm2001.bin" << std::endl;
     std::cout << "option name EvalFile type string default nn-04cf2b4ed1da.nnue" << std::endl;
@@ -120,7 +121,12 @@ void UCIEngine::handleSetOption(const std::vector<std::string>& tokens) {
     };
 
     std::string lowerName = toLower(name);
-    if (lowerName == "ownbook") {
+    if (lowerName == "hash") {
+        try {
+            int mb = std::stoi(val);
+            engine.setHashSize(mb);
+        } catch (...) {}
+    } else if (lowerName == "ownbook") {
         std::string lowerVal = toLower(val);
         openingBook.setEnabled(lowerVal == "true" || lowerVal == "1");
     } else if (lowerName == "bookfile") {

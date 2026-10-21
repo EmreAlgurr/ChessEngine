@@ -36,6 +36,15 @@ public:
         delete[] table; // Bellek sızıntısı olmasın
     }
 
+    void resize(int sizeInMB) {
+        if (sizeInMB < 1) sizeInMB = 1;
+        if (sizeInMB > 4096) sizeInMB = 4096;
+        delete[] table;
+        numEntries = (static_cast<uint64_t>(sizeInMB) * 1024 * 1024) / sizeof(TTEntry);
+        table = new TTEntry[numEntries]();
+        currentAge = 0;
+    }
+
     // Yeni nesil aramalarda eski verilerin üzerine yazmayı kolaylaştırmak için
     void newSearch() {
         currentAge++;

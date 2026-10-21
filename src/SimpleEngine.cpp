@@ -94,14 +94,14 @@ static bool initLmrDone = []() {
     return true;
 }();
 
-SimpleEngine::SimpleEngine() : maxDepth(4), stopSearch(false), nodesSearched(0), tt(16) {
+SimpleEngine::SimpleEngine() : maxDepth(4), stopSearch(false), nodesSearched(0), tt(64) {
     for (int i = 0; i < MAX_PLY + 32; i++) {
         nnueStack[i].data.accumulator.computedAccumulation = 0;
         nnueStack[i].data.dirtyPiece.dirtyNum = 0;
     }
 }
 
-SimpleEngine::SimpleEngine(int depth) : maxDepth(depth), stopSearch(false), nodesSearched(0), tt(16) {
+SimpleEngine::SimpleEngine(int depth) : maxDepth(depth), stopSearch(false), nodesSearched(0), tt(64) {
     for (int i = 0; i < MAX_PLY + 32; i++) {
         nnueStack[i].data.accumulator.computedAccumulation = 0;
         nnueStack[i].data.dirtyPiece.dirtyNum = 0;

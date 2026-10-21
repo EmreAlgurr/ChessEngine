@@ -62,6 +62,7 @@ public:
     explicit SimpleEngine(int depth);
 
     void setDepth(int depth);
+    void setHashSize(int sizeInMB) { tt.resize(sizeInMB); }
     Move16 getBestMove(BoardState& board, int color, long timeLimitMs);
     int64_t getNodesSearched() const;
     void clearTT() { tt.clear(); }
