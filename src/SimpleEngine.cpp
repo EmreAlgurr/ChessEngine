@@ -626,6 +626,11 @@ int SimpleEngine::quiescence(BoardState& board, int alpha, int beta, int ply, in
     orderMoves(moves, board, 0, ply, color);
 
     for (Move16 move : moves) {
+        // SEE pruning in QS: Kaybeden taş alışlarını (SEE < 0) atla (terfiler hariç)
+        if (!isPromotion(move) && board.getSEE(move) < 0) {
+            continue;
+        }
+
         int movingPiece = board.pieceOnSquare(moveFrom(move));
         UndoState undo;
         if (!board.makeMove(move, undo)) continue;
