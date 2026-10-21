@@ -452,6 +452,8 @@ int SimpleEngine::negamax(BoardState& board, int depth, int ply, int alpha, int 
     uint16_t bestMove = 0;
     bool foundPv = false;
     Move16 move;
+    Move16 quietMoves[64];
+    int quietCount = 0;
 
     while ((move = picker.nextMove()) != 0) {
         if (move == excludedMove) continue;
@@ -560,6 +562,10 @@ int SimpleEngine::negamax(BoardState& board, int depth, int ply, int alpha, int 
 
         if (stopSearch) return 0;
 
+        if (isQuietMove && quietCount < 64) {
+            quietMoves[quietCount++] = move;
+        }
+
         if (score > maxScore) {
             maxScore = score;
             bestMove = move;
@@ -581,6 +587,13 @@ int SimpleEngine::negamax(BoardState& board, int depth, int ply, int alpha, int 
                 int MAX_HISTORY = 16384;
                 int& hist = history[color][moveFrom(move)][moveTo(move)];
                 hist += bonus - (hist * std::abs(bonus) / MAX_HISTORY);
+
+                // History Malus: Bu düğümde beta kesmesi yapamayan önceki sessiz hamlelerin puanını düşür
+                for (int qi = 0; qi < quietCount - 1; qi++) {
+                    Move16 qm = quietMoves[qi];
+                    int& qhist = history[color][moveFrom(qm)][moveTo(qm)];
+                    qhist -= bonus - (qhist * std::abs(bonus) / MAX_HISTORY);
+                }
             }
             break; 
         }
