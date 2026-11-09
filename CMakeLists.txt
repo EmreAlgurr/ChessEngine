@@ -21,3 +21,4 @@ add_executable(ChessEngine ${SOURCES})
 target_compile_definitions(ChessEngine PRIVATE USE_AVX2=1)
 
 message(STATUS "Configured ChessEngine with AVX2 NNUE Hardware Acceleration.")
+
