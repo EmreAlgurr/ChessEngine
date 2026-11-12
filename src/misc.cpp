@@ -43,11 +43,16 @@ const void *map_file(FD fd, map_t *map)
 #ifndef _WIN32
 
   *map = file_size(fd);
+  if (*map == 0) return NULL;
   void *data = mmap(NULL, *map, PROT_READ, MAP_SHARED, fd, 0);
+  if (data == MAP_FAILED) return NULL;
+#ifdef MADV_WILLNEED
+  madvise(data, *map, MADV_WILLNEED);
+#endif
 #ifdef MADV_RANDOM
   madvise(data, *map, MADV_RANDOM);
 #endif
-  return data == MAP_FAILED ? NULL : data;
+  return data;
 
 #else
 

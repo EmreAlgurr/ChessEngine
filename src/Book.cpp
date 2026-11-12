@@ -32,29 +32,42 @@ PolyglotBook::~PolyglotBook() {
 }
 
 bool PolyglotBook::open(const std::string& filename) {
-    entries.clear();
-    std::ifstream file(filename, std::ios::binary);
-    if (!file.is_open()) {
+    close();
+    bookFd = open_file(filename.c_str());
+    if (bookFd == FD_ERR) {
         return false;
     }
 
-    BookEntry raw;
-    while (file.read(reinterpret_cast<char*>(&raw), sizeof(BookEntry))) {
-        BookEntry e;
-        e.key = BSWAP64(raw.key);
-        e.move = BSWAP16(raw.move);
-        e.weight = BSWAP16(raw.weight);
-        e.learn = BSWAP32(raw.learn);
-        entries.push_back(e);
+    size_t bytes = file_size(bookFd);
+    if (bytes < sizeof(BookEntry)) {
+        close();
+        return false;
     }
 
+    const void* view = map_file(bookFd, &bookMapping);
+    if (!view) {
+        close();
+        return false;
+    }
+
+    mappedEntries = static_cast<const BookEntry*>(view);
+    entryCount = bytes / sizeof(BookEntry);
     currentFile = filename;
     bookEnabled = true;
-    return !entries.empty();
+    return entryCount > 0;
 }
 
 void PolyglotBook::close() {
-    entries.clear();
+    if (mappedEntries) {
+        unmap_file(mappedEntries, bookMapping);
+        mappedEntries = nullptr;
+    }
+    bookMapping = map_t{};
+    if (bookFd != FD_ERR) {
+        close_file(bookFd);
+        bookFd = FD_ERR;
+    }
+    entryCount = 0;
 }
 
 uint64_t PolyglotBook::computePolyglotKey(const BoardState& board) {
@@ -162,28 +175,36 @@ Move16 PolyglotBook::getBookMove(BoardState& board) {
 
     uint64_t polyKey = computePolyglotKey(board);
 
-    // İkili arama ile anahtarı bul (Polyglot kitapları key'e göre sıralıdır)
+    // Zero-copy ikili arama (dogrudan mmap/MapViewOfFile adresi uzerinden)
+    const BookEntry* begin = mappedEntries;
+    const BookEntry* end   = mappedEntries + entryCount;
+
     auto comp = [](const BookEntry& a, uint64_t k) {
-        return a.key < k;
+        return BSWAP64(a.key) < k;
     };
 
-    auto it = std::lower_bound(entries.begin(), entries.end(), polyKey, comp);
-    if (it == entries.end() || it->key != polyKey) {
+    const BookEntry* it = std::lower_bound(begin, end, polyKey, comp);
+    if (it == end || BSWAP64(it->key) != polyKey) {
         return MOVE_NONE; // Pozisyon kitapta yok
     }
 
-    // Aynı pozisyon için tüm hamle varyantlarını topla
-    std::vector<BookEntry> matches;
-    while (it != entries.end() && it->key == polyKey) {
-        matches.push_back(*it);
+    // Aynı pozisyon için tüm hamle varyantlarını stack tamponuna topla (sifir heap tahsisi)
+    BookEntry matches[64];
+    int matchCount = 0;
+    while (it != end && BSWAP64(it->key) == polyKey && matchCount < 64) {
+        matches[matchCount].key    = polyKey;
+        matches[matchCount].move   = BSWAP16(it->move);
+        matches[matchCount].weight = BSWAP16(it->weight);
+        matches[matchCount].learn  = BSWAP32(it->learn);
+        matchCount++;
         ++it;
     }
 
-    if (matches.empty()) return MOVE_NONE;
+    if (matchCount == 0) return MOVE_NONE;
 
     // Ağırlıklı rastgele seçim (büyükustaların en sık oynadığı hamleler en yüksek şansa sahip olur)
     int totalWeight = 0;
-    for (const auto& m : matches) totalWeight += m.weight;
+    for (int i = 0; i < matchCount; ++i) totalWeight += matches[i].weight;
 
     BookEntry chosen;
     if (totalWeight <= 0) {
@@ -191,11 +212,11 @@ Move16 PolyglotBook::getBookMove(BoardState& board) {
     } else {
         int r = rand() % totalWeight;
         int acc = 0;
-        chosen = matches.back();
-        for (const auto& m : matches) {
-            acc += m.weight;
+        chosen = matches[matchCount - 1];
+        for (int i = 0; i < matchCount; ++i) {
+            acc += matches[i].weight;
             if (r < acc) {
-                chosen = m;
+                chosen = matches[i];
                 break;
             }
         }

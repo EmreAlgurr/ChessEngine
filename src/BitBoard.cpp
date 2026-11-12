@@ -1,4 +1,5 @@
 #include "BitBoard.h"
+#include <charconv>
 #include <sstream>
 #include <cctype>
 #include <cassert>
@@ -83,16 +84,33 @@ int BoardState::colorOnSquare(int sq) const {
 //  Standard FEN example (starting position):
 //  "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1"
 // ============================================================
-void BoardState::setFromFEN(const std::string& fen) {
+void BoardState::setFromFEN(std::string_view fen) {
     clear();
 
-    std::istringstream ss(fen);
-    std::string piecePlacement, activeColor, castling, epSquare;
-    int halfmove = 0, fullmove = 1;
+    auto nextToken = [&](size_t& pos) -> std::string_view {
+        while (pos < fen.size() && (fen[pos] == ' ' || fen[pos] == '\t')) ++pos;
+        size_t start = pos;
+        while (pos < fen.size() && fen[pos] != ' ' && fen[pos] != '\t') ++pos;
+        return fen.substr(start, pos - start);
+    };
 
-    ss >> piecePlacement >> activeColor >> castling >> epSquare;
-    if (ss >> halfmove) halfMoveClock = halfmove;
-    if (ss >> fullmove) fullMoveNumber = fullmove;
+    size_t pos = 0;
+    std::string_view piecePlacement = nextToken(pos);
+    std::string_view activeColor    = nextToken(pos);
+    std::string_view castling       = nextToken(pos);
+    std::string_view epSquare       = nextToken(pos);
+    std::string_view halfmoveStr    = nextToken(pos);
+    std::string_view fullmoveStr    = nextToken(pos);
+
+    int halfmove = 0, fullmove = 1;
+    if (!halfmoveStr.empty()) {
+        std::from_chars(halfmoveStr.data(), halfmoveStr.data() + halfmoveStr.size(), halfmove);
+        halfMoveClock = halfmove;
+    }
+    if (!fullmoveStr.empty()) {
+        std::from_chars(fullmoveStr.data(), fullmoveStr.data() + fullmoveStr.size(), fullmove);
+        fullMoveNumber = fullmove;
+    }
 
     // ---- 1. Piece Placement ----
     // FEN ranks go from rank 8 (top) to rank 1 (bottom)

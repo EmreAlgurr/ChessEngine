@@ -3,8 +3,10 @@
 #include "Book.h"
 #include "nnue.h"
 #include <algorithm>
+#include <cstring>
 #include <iostream>
 #include <cmath>
+#include <limits>
 
 const int SimpleEngine::PAWN_TABLE[64] = {
      0,  0,  0,  0,  0,  0,  0,  0,
@@ -94,41 +96,42 @@ static bool initLmrDone = []() {
     return true;
 }();
 
-SimpleEngine::SimpleEngine() : maxDepth(4), stopSearch(false), nodesSearched(0), tt(64) {
+void SimpleEngine::initSearchPool() {
+    constexpr size_t poolBytes =
+        sizeof(NNUEdataAligned) * (MAX_PLY + 32) +
+        sizeof(uint16_t[2]) * MAX_PLY +
+        sizeof(int[64][64]) * 2 +
+        sizeof(int[64][6]) * 64 +
+        sizeof(uint64_t) * (MAX_GAME_KEYS + MAX_PLY + 16) +
+        4096; // alignment padding
+
+    searchPool.init(poolBytes, false);
+    nnueStack      = searchPool.allocateArray<NNUEdataAligned>(MAX_PLY + 32, 64, true);
+    killerMoves    = reinterpret_cast<uint16_t(*)[2]>(searchPool.allocateArray<uint16_t>(MAX_PLY * 2, 64, true));
+    history        = reinterpret_cast<int(*)[64][64]>(searchPool.allocateArray<int>(2 * 64 * 64, 64, true));
+    captureHistory = reinterpret_cast<int(*)[64][6]>(searchPool.allocateArray<int>(64 * 64 * 6, 64, true));
+    keyStack       = searchPool.allocateArray<uint64_t>(MAX_GAME_KEYS + MAX_PLY + 16, 64, true);
+
     for (int i = 0; i < MAX_PLY + 32; i++) {
         nnueStack[i].data.accumulator.computedAccumulation = 0;
         nnueStack[i].data.dirtyPiece.dirtyNum = 0;
     }
 }
 
-SimpleEngine::SimpleEngine(int depth) : maxDepth(depth), stopSearch(false), nodesSearched(0), tt(64) {
-    for (int i = 0; i < MAX_PLY + 32; i++) {
-        nnueStack[i].data.accumulator.computedAccumulation = 0;
-        nnueStack[i].data.dirtyPiece.dirtyNum = 0;
-    }
+SimpleEngine::SimpleEngine() : tt(64), maxDepth(4), stopSearch(false), nodesSearched(0) {
+    initSearchPool();
+}
+
+SimpleEngine::SimpleEngine(int depth) : tt(64), maxDepth(depth), stopSearch(false), nodesSearched(0) {
+    initSearchPool();
 }
 
 void SimpleEngine::setDepth(int depth) { maxDepth = depth; }
 
 void SimpleEngine::clearHistoryAndKillers() {
-    for (int i = 0; i < MAX_PLY; i++) {
-        killerMoves[i][0] = 0;
-        killerMoves[i][1] = 0;
-    }
-    for (int c = 0; c < 2; c++) {
-        for (int f = 0; f < 64; f++) {
-            for (int t = 0; t < 64; t++) {
-                history[c][f][t] = 0;
-            }
-        }
-    }
-    for (int f = 0; f < 64; f++) {
-        for (int t = 0; t < 64; t++) {
-            for (int p = 0; p < 6; p++) {
-                captureHistory[f][t][p] = 0;
-            }
-        }
-    }
+    std::memset(killerMoves, 0, sizeof(uint16_t[2]) * MAX_PLY);
+    std::memset(history, 0, sizeof(int[64][64]) * 2);
+    std::memset(captureHistory, 0, sizeof(int[64][6]) * 64);
 }
 
 Move16 SimpleEngine::getBestMove(BoardState& board, int color, long timeLimitMs) {
@@ -136,7 +139,7 @@ Move16 SimpleEngine::getBestMove(BoardState& board, int color, long timeLimitMs)
     stopSearch = false;
     tt.newSearch();
     clearHistoryAndKillers();
-    auto startTime = std::chrono::steady_clock::now();
+    const int64_t startTimeNs = Platform::fastNowNs();
 
     // Reset all plies of nnueStack to ensure zero leakage from previous searches
     for (int i = 0; i < MAX_PLY + 32; i++) {
@@ -145,17 +148,15 @@ Move16 SimpleEngine::getBestMove(BoardState& board, int color, long timeLimitMs)
     }
     evaluate(board, color, 0);
 
-    // --- Tekrar tespiti icin anahtar yigini ---
-    // gameKeys'in son elemani kok pozisyon olmali; degilse (or. TerminalGame)
-    // sadece koku koyariz, oyun gecmisi olmadan calisir.
+    // --- Tekrar tespiti icin anahtar yigini (Zero-copy referans okuma) ---
     {
-        int n = static_cast<int>(gameKeys.size());
-        if (n == 0 || gameKeys.back() != board.zobristKey) {
+        int n = static_cast<int>(gameKeysCount);
+        if (n == 0 || !gameKeysPtr || gameKeysPtr[n - 1] != board.zobristKey) {
             keyStack[0] = board.zobristKey;
             rootIndex = 0;
         } else {
             int start = (n > MAX_GAME_KEYS) ? n - MAX_GAME_KEYS : 0;
-            for (int i = start; i < n; i++) keyStack[i - start] = gameKeys[i];
+            for (int i = start; i < n; i++) keyStack[i - start] = gameKeysPtr[i];
             rootIndex = n - 1 - start;
         }
     }
@@ -163,11 +164,11 @@ Move16 SimpleEngine::getBestMove(BoardState& board, int color, long timeLimitMs)
     if (timeLimitMs > 0) {
         long softLimitMs = static_cast<long>(timeLimitMs * 0.60);
         if (softLimitMs < 5) softLimitMs = std::max(1L, timeLimitMs - 5);
-        searchSoftEndTime = startTime + std::chrono::milliseconds(softLimitMs);
-        searchHardEndTime = startTime + std::chrono::milliseconds(timeLimitMs);
+        searchSoftEndNs = startTimeNs + static_cast<int64_t>(softLimitMs) * 1000000LL;
+        searchHardEndNs = startTimeNs + static_cast<int64_t>(timeLimitMs) * 1000000LL;
     } else {
-        searchSoftEndTime = std::chrono::steady_clock::time_point::max();
-        searchHardEndTime = std::chrono::steady_clock::time_point::max();
+        searchSoftEndNs = std::numeric_limits<int64_t>::max();
+        searchHardEndNs = std::numeric_limits<int64_t>::max();
     }
 
     // 0. Açılış Kitabı (Book move varsa 0 ms'de anında oyna)
@@ -311,7 +312,7 @@ Move16 SimpleEngine::getBestMove(BoardState& board, int color, long timeLimitMs)
             bestScore = maxScore;
             hasBestMove = true;
             completedDepth = d;
-            long timeMs = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - startTime).count();
+            long timeMs = static_cast<long>((Platform::fastNowNs() - startTimeNs) / 1000000LL);
             std::cout << "info depth " << d << " score cp " << bestScore
                       << " nodes " << nodesSearched << " time " << timeMs
                       << " pv " << moveToUCI(bestMove) << std::endl;
@@ -320,11 +321,11 @@ Move16 SimpleEngine::getBestMove(BoardState& board, int color, long timeLimitMs)
         // Yumuşak Zaman Sınırı (Soft Time Limit):
         // Sürenin %60'ından fazlası harcandıysa, bir sonraki derinlik kesinlikle yarım kalacaktır.
         // Bu yüzden yeni derinliğe girmeden mevcut en iyi tamamlanmış hamleyle çık!
-        if (std::chrono::steady_clock::now() >= searchSoftEndTime) break;
+        if (Platform::fastNowNs() >= searchSoftEndNs) break;
     }
 
     if (hasBestMove && completedDepth == 0) {
-        long timeMs = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - startTime).count();
+        long timeMs = static_cast<long>((Platform::fastNowNs() - startTimeNs) / 1000000LL);
         std::cout << "info depth 1 score cp " << bestScore
                   << " nodes " << nodesSearched << " time " << timeMs
                   << " pv " << moveToUCI(bestMove) << std::endl;
@@ -368,7 +369,7 @@ int SimpleEngine::negamax(BoardState& board, int depth, int ply, int alpha, int 
     nodesSearched++;
 
     if ((nodesSearched & 2047) == 0) {
-        if (std::chrono::steady_clock::now() >= searchHardEndTime) stopSearch = true;
+        if (Platform::fastNowNs() >= searchHardEndNs) stopSearch = true;
     }
     if (stopSearch) return 0;
 
@@ -637,7 +638,7 @@ int SimpleEngine::quiescence(BoardState& board, int alpha, int beta, int ply, in
     nodesSearched++;
 
     if ((nodesSearched & 2047) == 0) {
-        if (std::chrono::steady_clock::now() >= searchHardEndTime) stopSearch = true;
+        if (Platform::fastNowNs() >= searchHardEndNs) stopSearch = true;
     }
     if (stopSearch) return 0;
 

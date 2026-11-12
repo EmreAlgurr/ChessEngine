@@ -9,6 +9,9 @@
 #include <inttypes.h>
 
 #ifdef _WIN32
+#  ifndef NOMINMAX
+#    define NOMINMAX
+#  endif
 #  include <windows.h>
 #else
 #  include <unistd.h>
@@ -81,6 +84,13 @@ INLINE uint16_t readu_le_u16(const void *p)
 void decode_fen(const char* fen_str, int* player, int* castle,
        int* fifty, int* move_number, int* piece, int* square);
 
+#ifdef __cplusplus
+template <typename T, typename Lo, typename Hi>
+INLINE T clamp(T a, Lo b, Hi c) {
+    return (a < static_cast<T>(b)) ? static_cast<T>(b) : ((a > static_cast<T>(c)) ? static_cast<T>(c) : a);
+}
+#else
 #define clamp(a, b, c) ((a) < (b) ? (b) : (a) > (c) ? (c) : (a))
+#endif
 
 #endif

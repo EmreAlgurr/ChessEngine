@@ -2,73 +2,109 @@
 #include "Tuning.h"
 #include "Book.h"
 #include "nnue.h"
-#include <iostream>
-#include <sstream>
-#include <cstdlib>
+#include <algorithm>
+#include <charconv>
 #include <cctype>
+#include <cstdlib>
+#include <cstring>
+#include <iostream>
+
+namespace {
+
+inline bool parseIntView(std::string_view sv, int& out) {
+    if (sv.empty()) return false;
+    auto res = std::from_chars(sv.data(), sv.data() + sv.size(), out);
+    return res.ec == std::errc{};
+}
+
+inline bool parseLongView(std::string_view sv, long& out) {
+    if (sv.empty()) return false;
+    auto res = std::from_chars(sv.data(), sv.data() + sv.size(), out);
+    return res.ec == std::errc{};
+}
+
+inline bool equalsIgnoreCase(std::string_view a, std::string_view b) {
+    if (a.size() != b.size()) return false;
+    for (size_t i = 0; i < a.size(); ++i) {
+        if (std::tolower(static_cast<unsigned char>(a[i])) !=
+            std::tolower(static_cast<unsigned char>(b[i]))) {
+            return false;
+        }
+    }
+    return true;
+}
+
+} // namespace
 
 UCIEngine::UCIEngine() : debug(false), currentColor(WHITE_SIDE) {
     engine.setDepth(4);
     board.setFromFEN("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1");
+    gameKeys.reserve(1024);
+    lineBuffer.reserve(4096);
 }
 
-std::vector<std::string> UCIEngine::split(const std::string& line) {
-    std::vector<std::string> tokens;
-    std::istringstream ss(line);
-    std::string token;
-    while (ss >> token) {
-        tokens.push_back(token);
+size_t UCIEngine::tokenizeZeroCopy(std::string_view line, std::string_view* outTokens, size_t maxTokens) {
+    size_t count = 0;
+    size_t i = 0;
+    const size_t n = line.size();
+
+    while (i < n && count < maxTokens) {
+        while (i < n && (line[i] == ' ' || line[i] == '\t' || line[i] == '\r' || line[i] == '\n')) {
+            ++i;
+        }
+        if (i >= n) break;
+        const size_t start = i;
+        while (i < n && line[i] != ' ' && line[i] != '\t' && line[i] != '\r' && line[i] != '\n') {
+            ++i;
+        }
+        outTokens[count++] = line.substr(start, i - start);
     }
-    return tokens;
+    return count;
 }
 
 void UCIEngine::run() {
-    std::string line;
-    while (std::getline(std::cin, line)) {
-        while (!line.empty() && (line.back() == '\r' || line.back() == '\n' || line.back() == ' '))
-            line.pop_back();
-        while (!line.empty() && (line.front() == ' '))
-            line.erase(line.begin());
+    while (std::getline(std::cin, lineBuffer)) {
+        size_t count = tokenizeZeroCopy(lineBuffer, tokenBuffer.data(), tokenBuffer.size());
+        if (count == 0) continue;
 
-        if (line.empty()) continue;
-
-        auto tokens = split(line);
-        if (tokens.empty()) continue;
-
-        const std::string& command = tokens[0];
+        const std::string_view* tokens = tokenBuffer.data();
+        const std::string_view command = tokens[0];
 
         if (command == "uci") {
             handleUCI();
         } else if (command == "debug") {
-            if (tokens.size() > 1) handleDebug(tokens[1]);
+            if (count > 1) handleDebug(tokens[1]);
         } else if (command == "isready") {
             handleIsReady();
         } else if (command == "setoption") {
-            handleSetOption(tokens);
+            handleSetOption(tokens, count);
         } else if (command == "ucinewgame") {
             handleUCINewGame();
         } else if (command == "position") {
-            handlePosition(tokens);
+            handlePosition(tokens, count);
         } else if (command == "go") {
-            handleGo(tokens);
+            handleGo(tokens, count);
         } else if (command == "stop") {
             handleStop();
         } else if (command == "quit") {
             handleQuit();
             return;
         } else if (command == "tune") {
-            std::string datasetPath = (tokens.size() > 1) ? tokens[1] : "dataset.epd";
-            int epochs = (tokens.size() > 2) ? std::stoi(tokens[2]) : 50;
-            int threads = (tokens.size() > 3) ? std::stoi(tokens[3]) : 4;
-            int maxPositions = (tokens.size() > 4) ? std::stoi(tokens[4]) : 0;
+            std::string datasetPath = (count > 1) ? std::string(tokens[1]) : "dataset.epd";
+            int epochs = 50, threads = 4, maxPositions = 0;
+            if (count > 2) parseIntView(tokens[2], epochs);
+            if (count > 3) parseIntView(tokens[3], threads);
+            if (count > 4) parseIntView(tokens[4], maxPositions);
             Tuner::run(datasetPath, epochs, threads, maxPositions);
         } else if (command == "d" || command == "display" || command == "print") {
             board.display();
-        } else if (command.length() >= 4 && std::islower(command[0]) && std::isdigit(command[1])) {
+        } else if (command.length() >= 4 &&
+                   std::islower(static_cast<unsigned char>(command[0])) &&
+                   std::isdigit(static_cast<unsigned char>(command[1]))) {
             makeUCIMove(command);
             board.display();
-            std::vector<std::string> goTokens = {"go", "depth", "4"};
-            handleGo(goTokens);
+            const std::string_view goTokens[3] = {"go", "depth", "4"};
+            handleGo(goTokens, 3);
             board.display();
         } else {
             if (debug) {
@@ -79,16 +115,16 @@ void UCIEngine::run() {
 }
 
 void UCIEngine::handleUCI() {
-    std::cout << "id name MyEngine_CPP 1.0" << std::endl;
-    std::cout << "id author Antigravity" << std::endl;
-    std::cout << "option name Hash type spin default 64 min 1 max 4096" << std::endl;
-    std::cout << "option name OwnBook type check default true" << std::endl;
-    std::cout << "option name BookFile type string default gm2001.bin" << std::endl;
-    std::cout << "option name EvalFile type string default nn-04cf2b4ed1da.nnue" << std::endl;
-    std::cout << "uciok" << std::endl;
+    std::cout << "id name MyEngine_CPP 1.0\n"
+              << "id author Antigravity\n"
+              << "option name Hash type spin default 64 min 1 max 4096\n"
+              << "option name OwnBook type check default true\n"
+              << "option name BookFile type string default gm2001.bin\n"
+              << "option name EvalFile type string default nn-04cf2b4ed1da.nnue\n"
+              << "uciok" << std::endl;
 }
 
-void UCIEngine::handleDebug(const std::string& arg) {
+void UCIEngine::handleDebug(std::string_view arg) {
     debug = (arg == "on");
 }
 
@@ -96,43 +132,53 @@ void UCIEngine::handleIsReady() {
     std::cout << "readyok" << std::endl;
 }
 
-void UCIEngine::handleSetOption(const std::vector<std::string>& tokens) {
-    std::string name, val;
-    bool readingName = false, readingVal = false;
-    for (size_t i = 1; i < tokens.size(); i++) {
+void UCIEngine::handleSetOption(const std::string_view* tokens, size_t count) {
+    // Reconstruct multi-word option names/values inside contiguous lineBuffer slices when possible
+    size_t nameStart = count, nameEnd = count;
+    size_t valStart  = count, valEnd  = count;
+
+    for (size_t i = 1; i < count; i++) {
         if (tokens[i] == "name") {
-            readingName = true; readingVal = false;
+            nameStart = i + 1;
+            nameEnd = nameStart;
         } else if (tokens[i] == "value") {
-            readingName = false; readingVal = true;
-        } else {
-            if (readingName) {
-                if (!name.empty()) name += " ";
-                name += tokens[i];
-            } else if (readingVal) {
-                if (!val.empty()) val += " ";
-                val += tokens[i];
-            }
+            if (nameStart < count && nameEnd == nameStart) nameEnd = i;
+            valStart = i + 1;
+            valEnd = count;
+            break;
+        } else if (nameStart < count && valStart == count) {
+            nameEnd = i + 1;
         }
     }
 
-    auto toLower = [](std::string s) {
-        for (char& c : s) c = std::tolower(static_cast<unsigned char>(c));
-        return s;
-    };
+    if (nameStart >= nameEnd) return;
 
-    std::string lowerName = toLower(name);
-    if (lowerName == "hash") {
-        try {
-            int mb = std::stoi(val);
+    const char* nBegin = tokens[nameStart].data();
+    const char* nEnd   = tokens[nameEnd - 1].data() + tokens[nameEnd - 1].size();
+    std::string_view nameView(nBegin, static_cast<size_t>(nEnd - nBegin));
+
+    std::string_view valView;
+    if (valStart < valEnd) {
+        const char* vBegin = tokens[valStart].data();
+        const char* vEnd   = tokens[valEnd - 1].data() + tokens[valEnd - 1].size();
+        valView = std::string_view(vBegin, static_cast<size_t>(vEnd - vBegin));
+    }
+
+    if (equalsIgnoreCase(nameView, "hash")) {
+        int mb = 0;
+        if (parseIntView(valView, mb)) {
             engine.setHashSize(mb);
-        } catch (...) {}
-    } else if (lowerName == "ownbook") {
-        std::string lowerVal = toLower(val);
-        openingBook.setEnabled(lowerVal == "true" || lowerVal == "1");
-    } else if (lowerName == "bookfile") {
-        openingBook.open(val);
-    } else if (lowerName == "evalfile") {
-        nnue_init(val.c_str());
+        }
+    } else if (equalsIgnoreCase(nameView, "ownbook")) {
+        openingBook.setEnabled(equalsIgnoreCase(valView, "true") || valView == "1");
+    } else if (equalsIgnoreCase(nameView, "bookfile")) {
+        openingBook.open(std::string(valView));
+    } else if (equalsIgnoreCase(nameView, "evalfile")) {
+        char pathBuf[512];
+        const size_t copyLen = std::min(valView.size(), sizeof(pathBuf) - 1);
+        std::memcpy(pathBuf, valView.data(), copyLen);
+        pathBuf[copyLen] = '\0';
+        nnue_init(pathBuf);
     }
 }
 
@@ -143,8 +189,8 @@ void UCIEngine::handleUCINewGame() {
     gameKeys.push_back(board.zobristKey);
 }
 
-void UCIEngine::handlePosition(const std::vector<std::string>& tokens) {
-    if (tokens.size() < 2) return;
+void UCIEngine::handlePosition(const std::string_view* tokens, size_t count) {
+    if (count < 2) return;
 
     if (tokens[1] == "startpos") {
         board.setFromFEN("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1");
@@ -152,57 +198,56 @@ void UCIEngine::handlePosition(const std::vector<std::string>& tokens) {
         gameKeys.clear();
         gameKeys.push_back(board.zobristKey);
 
-        int movesIndex = -1;
-        for (size_t i = 2; i < tokens.size(); i++) {
+        size_t movesIndex = count;
+        for (size_t i = 2; i < count; i++) {
             if (tokens[i] == "moves") {
-                movesIndex = static_cast<int>(i) + 1;
+                movesIndex = i + 1;
                 break;
             }
         }
 
-        if (movesIndex != -1) {
-            for (size_t i = movesIndex; i < tokens.size(); i++) {
-                makeUCIMove(tokens[i]);
-            }
+        for (size_t i = movesIndex; i < count; i++) {
+            makeUCIMove(tokens[i]);
         }
     } else if (tokens[1] == "fen") {
-        std::string fen;
-        int movesIndex = -1;
+        if (count < 3) return;
 
-        for (size_t i = 2; i < tokens.size(); i++) {
+        size_t fenEndToken = count;
+        size_t movesIndex = count;
+        for (size_t i = 2; i < count; i++) {
             if (tokens[i] == "moves") {
-                movesIndex = static_cast<int>(i) + 1;
+                fenEndToken = i;
+                movesIndex = i + 1;
                 break;
             }
-            if (!fen.empty()) fen += " ";
-            fen += tokens[i];
         }
 
-        board.setFromFEN(fen);
+        if (fenEndToken > 2) {
+            // Zero-copy slice directly over lineBuffer for the FEN fields
+            const char* fenBegin = tokens[2].data();
+            const char* fenEnd   = tokens[fenEndToken - 1].data() + tokens[fenEndToken - 1].size();
+            std::string_view fenView(fenBegin, static_cast<size_t>(fenEnd - fenBegin));
+            board.setFromFEN(fenView);
+        }
+
+        currentColor = board.sideToMove;
         gameKeys.clear();
         gameKeys.push_back(board.zobristKey);
 
-        std::istringstream fenSS(fen);
-        std::string dummy, colorStr;
-        fenSS >> dummy >> colorStr;
-        currentColor = (colorStr == "w") ? WHITE_SIDE : BLACK_SIDE;
-
-        if (movesIndex != -1) {
-            for (size_t i = movesIndex; i < tokens.size(); i++) {
-                makeUCIMove(tokens[i]);
-            }
+        for (size_t i = movesIndex; i < count; i++) {
+            makeUCIMove(tokens[i]);
         }
     }
 }
 
-void UCIEngine::makeUCIMove(const std::string& uciMove) {
+void UCIEngine::makeUCIMove(std::string_view uciMove) {
     if (uciMove.length() < 4) return;
 
     MoveList legalMoves;
     MoveGen::generateAllMoves(board, legalMoves);
 
     for (Move16 move : legalMoves) {
-        if (moveToUCI(move) == uciMove) {
+        if (moveMatchesUCI(move, uciMove)) {
             UndoState undo;
             if (board.makeMove(move, undo)) {
                 currentColor = (currentColor == WHITE_SIDE) ? BLACK_SIDE : WHITE_SIDE;
@@ -221,24 +266,24 @@ int UCIEngine::getCurrentPlayerFromBoard() {
     return currentColor;
 }
 
-void UCIEngine::handleGo(const std::vector<std::string>& tokens) {
+void UCIEngine::handleGo(const std::string_view* tokens, size_t count) {
     long wtime = 0, btime = 0, winc = 0, binc = 0;
     int depth = 0, movetime = 0;
     bool infinite = false;
 
-    for (size_t i = 1; i < tokens.size(); i++) {
-        if (tokens[i] == "wtime" && i + 1 < tokens.size()) {
-            wtime = std::stol(tokens[++i]);
-        } else if (tokens[i] == "btime" && i + 1 < tokens.size()) {
-            btime = std::stol(tokens[++i]);
-        } else if (tokens[i] == "winc" && i + 1 < tokens.size()) {
-            winc = std::stol(tokens[++i]);
-        } else if (tokens[i] == "binc" && i + 1 < tokens.size()) {
-            binc = std::stol(tokens[++i]);
-        } else if (tokens[i] == "depth" && i + 1 < tokens.size()) {
-            depth = std::stoi(tokens[++i]);
-        } else if (tokens[i] == "movetime" && i + 1 < tokens.size()) {
-            movetime = std::stoi(tokens[++i]);
+    for (size_t i = 1; i < count; i++) {
+        if (tokens[i] == "wtime" && i + 1 < count) {
+            parseLongView(tokens[++i], wtime);
+        } else if (tokens[i] == "btime" && i + 1 < count) {
+            parseLongView(tokens[++i], btime);
+        } else if (tokens[i] == "winc" && i + 1 < count) {
+            parseLongView(tokens[++i], winc);
+        } else if (tokens[i] == "binc" && i + 1 < count) {
+            parseLongView(tokens[++i], binc);
+        } else if (tokens[i] == "depth" && i + 1 < count) {
+            parseIntView(tokens[++i], depth);
+        } else if (tokens[i] == "movetime" && i + 1 < count) {
+            parseIntView(tokens[++i], movetime);
         } else if (tokens[i] == "infinite") {
             infinite = true;
         }
@@ -280,9 +325,12 @@ void UCIEngine::handleGo(const std::vector<std::string>& tokens) {
     else if (timeToThink > 0) engine.setDepth(20);
     else engine.setDepth(5);
 
-    engine.setGameHistory(gameKeys);
+    engine.setGameHistory(gameKeys.data(), gameKeys.size());
     Move16 bestMove = engine.getBestMove(board, currentColor, timeToThink);
-    std::string uci = moveToUCI(bestMove);
+
+    char bestBuf[6];
+    size_t bestLen = moveToUCIBuf(bestMove, bestBuf);
+    std::string_view uci(bestBuf, bestLen);
 
     if (uci.empty() || uci == "0000" || uci == "a0a0") {
         MoveList legalMoves;
@@ -293,14 +341,15 @@ void UCIEngine::handleGo(const std::vector<std::string>& tokens) {
                 UndoState u;
                 if (board.makeMove(m, u)) {
                     bestMove = m;
-                    uci = moveToUCI(m);
+                    bestLen = moveToUCIBuf(m, bestBuf);
+                    uci = std::string_view(bestBuf, bestLen);
                     std::cerr << "info string WARNING: search returned no move, using fallback: " << uci << std::endl;
                     board.undoMove(m, u);
                     break;
                 }
             }
         }
-        
+
         if (uci.empty() || uci == "0000" || uci == "a0a0") {
             std::cout << "bestmove 0000" << std::endl;
             return;

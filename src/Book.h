@@ -1,9 +1,10 @@
 #pragma once
 
 #include "BitBoard.h"
+#include "misc.h"
 #include <string>
-#include <vector>
 #include <cstdint>
+#include <cstddef>
 
 struct BookEntry {
     uint64_t key;
@@ -11,18 +12,19 @@ struct BookEntry {
     uint16_t weight;
     uint32_t learn;
 };
+static_assert(sizeof(BookEntry) == 16, "Polyglot BookEntry must be 16 bytes");
 
 class PolyglotBook {
 public:
     PolyglotBook();
     ~PolyglotBook();
 
-    // Open and load book file into memory
+    // Open and memory-map book file (zero-copy)
     bool open(const std::string& filename);
     void close();
 
     // Is a book currently loaded?
-    bool isLoaded() const { return !entries.empty(); }
+    bool isLoaded() const { return mappedEntries != nullptr && entryCount > 0; }
 
     // Enable/disable book
     void setEnabled(bool enabled) { bookEnabled = enabled; }
@@ -36,7 +38,10 @@ public:
     static uint64_t computePolyglotKey(const BoardState& board);
 
 private:
-    std::vector<BookEntry> entries;
+    FD bookFd = FD_ERR;
+    map_t bookMapping{};
+    const BookEntry* mappedEntries = nullptr;
+    size_t entryCount = 0;
     bool bookEnabled;
     std::string currentFile;
 

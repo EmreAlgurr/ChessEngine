@@ -1,3 +1,4 @@
+#include "Platform.h"
 #include "UCIEngine.h"
 #include "TerminalGame.h"
 #include "Magics.h"
@@ -9,6 +10,9 @@
 #include <sstream>
 
 int main(int argc, char* argv[]) {
+    // 0. Optimize userland execution boundaries (stdio decoupling, line buffering, Linux CPU affinity)
+    Platform::optimizeUserlandBoundaries();
+
     // 1. Mandatory Engine Initialization
     Magics::initMagics();
     Zobrist::init();
@@ -51,9 +55,7 @@ int main(int argc, char* argv[]) {
 
         if (firstLine == "uci") {
             UCIEngine engine;
-            std::cout << "id name MyEngine_CPP 1.0" << std::endl;
-            std::cout << "id author Antigravity" << std::endl;
-            std::cout << "uciok" << std::endl;
+            engine.handleUCI();
             engine.run();
             return 0;
         }

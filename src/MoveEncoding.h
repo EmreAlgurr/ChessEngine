@@ -2,6 +2,7 @@
 
 #include <cstdint>
 #include <string>
+#include <string_view>
 
 // ============================================================
 //  16-Bit Packed Move Encoding
@@ -142,26 +143,38 @@ inline constexpr int promotionPiece(Move16 m) {
 //  e.g. "e2e4", "e7e8q", "e1g1" (castling)
 // ============================================================
 
-inline std::string moveToUCI(Move16 m) {
-    if (m == MOVE_NONE) return "0000";
-
+// Zero-allocation UCI move serialization into stack buffer
+inline size_t moveToUCIBuf(Move16 m, char out[6]) {
+    if (m == MOVE_NONE) {
+        out[0] = '0'; out[1] = '0'; out[2] = '0'; out[3] = '0'; out[4] = '\0';
+        return 4;
+    }
     int from = moveFrom(m);
     int to   = moveTo(m);
-
-    std::string uci;
-    uci += static_cast<char>('a' + (from & 7));   // from file
-    uci += static_cast<char>('1' + (from >> 3));   // from rank
-    uci += static_cast<char>('a' + (to   & 7));   // to file
-    uci += static_cast<char>('1' + (to   >> 3));   // to rank
-
-    // Append promotion piece letter
+    out[0] = static_cast<char>('a' + (from & 7));
+    out[1] = static_cast<char>('1' + (from >> 3));
+    out[2] = static_cast<char>('a' + (to   & 7));
+    out[3] = static_cast<char>('1' + (to   >> 3));
+    size_t len = 4;
     if (isPromotion(m)) {
         static const char promoChars[] = { 'n', 'b', 'r', 'q' };
-        int idx = promotionPiece(m) - 1;  // 1→0, 2→1, 3→2, 4→3
-        if (idx >= 0 && idx < 4) uci += promoChars[idx];
+        int idx = promotionPiece(m) - 1;
+        if (idx >= 0 && idx < 4) out[len++] = promoChars[idx];
     }
+    out[len] = '\0';
+    return len;
+}
 
-    return uci;
+inline bool moveMatchesUCI(Move16 m, std::string_view uci) {
+    char buf[6];
+    size_t len = moveToUCIBuf(m, buf);
+    return std::string_view(buf, len) == uci;
+}
+
+inline std::string moveToUCI(Move16 m) {
+    char buf[6];
+    size_t len = moveToUCIBuf(m, buf);
+    return std::string(buf, len);
 }
 
 // ============================================================

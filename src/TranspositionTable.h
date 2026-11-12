@@ -1,5 +1,7 @@
 #pragma once
+#include "MemoryPool.h"
 #include <cstdint>
+#include <cstring>
 
 // TT Skor Tipleri (Bounds)
 enum TTFlag : uint8_t {
@@ -20,28 +22,25 @@ struct TTEntry {
 
 class TranspositionTable {
 private:
-    TTEntry* table;
-    uint64_t numEntries;
-    uint16_t currentAge;
+    MemoryPool ttPool;
+    TTEntry* table = nullptr;
+    uint64_t numEntries = 0;
+    uint16_t currentAge = 0;
 
 public:
-    TranspositionTable(int sizeInMB) {
-        // 1 MB = 1024 * 1024 byte. Bunu 16 byte'lık struct boyutuna bölüyoruz.
-        numEntries = (sizeInMB * 1024 * 1024) / sizeof(TTEntry);
-        table = new TTEntry[numEntries](); // Tüm tabloyu RAM'de sıfırlarla oluştur
-        currentAge = 0;
+    explicit TranspositionTable(int sizeInMB) {
+        resize(sizeInMB);
     }
 
-    ~TranspositionTable() {
-        delete[] table; // Bellek sızıntısı olmasın
-    }
+    ~TranspositionTable() = default;
 
     void resize(int sizeInMB) {
         if (sizeInMB < 1) sizeInMB = 1;
         if (sizeInMB > 4096) sizeInMB = 4096;
-        delete[] table;
-        numEntries = (static_cast<uint64_t>(sizeInMB) * 1024 * 1024) / sizeof(TTEntry);
-        table = new TTEntry[numEntries]();
+        const size_t bytes = static_cast<size_t>(sizeInMB) * 1024ULL * 1024ULL;
+        ttPool.init(bytes + 64, true);
+        numEntries = bytes / sizeof(TTEntry);
+        table = ttPool.allocateArray<TTEntry>(numEntries, 64, false);
         currentAge = 0;
     }
 
@@ -58,8 +57,8 @@ public:
     
     // Tabloyu tamamen temizleme
     void clear() {
-        for (uint64_t i = 0; i < numEntries; ++i) {
-            table[i] = TTEntry();
+        if (table && numEntries > 0) {
+            std::memset(table, 0, numEntries * sizeof(TTEntry));
         }
     }
 };

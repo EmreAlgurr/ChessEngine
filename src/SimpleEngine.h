@@ -2,8 +2,8 @@
 
 #include "BitBoard.h"
 #include "MoveGenerator.h"
+#include "MemoryPool.h"
 #include <cstdint>
-#include <chrono>
 #include <vector>
 #include "TranspositionTable.h"
 #include "nnue.h"
@@ -69,34 +69,44 @@ public:
     void clearTT() { tt.clear(); }
     void clearHistoryAndKillers();
 
-    // Oyun gecmisi (kok pozisyon DAHIL, son eleman = kok). UCI her
-    // "position" komutunda bunu doldurur. Tekrar tespiti icin kullanilir.
-    void setGameHistory(const std::vector<uint64_t>& keys) { gameKeys = keys; }
+    // Oyun gecmisi (kok pozisyon DAHIL, son eleman = kok). Zero-copy span referansi.
+    void setGameHistory(const uint64_t* keys, size_t count) {
+        gameKeysPtr = keys;
+        gameKeysCount = count;
+    }
+    void setGameHistory(const std::vector<uint64_t>& keys) {
+        gameKeysPtr = keys.data();
+        gameKeysCount = keys.size();
+    }
 
     int evaluate(const BoardState& board, int activeColor, int ply = -1);
 
 private:
     TranspositionTable tt;
+    MemoryPool searchPool; // Contiguous 64-byte aligned arena for all search buffers
     int maxDepth;
     static constexpr int MAX_PLY = 128;
-    std::chrono::steady_clock::time_point searchSoftEndTime;
-    std::chrono::steady_clock::time_point searchHardEndTime;
+    int64_t searchSoftEndNs = 0;
+    int64_t searchHardEndNs = 0;
     bool stopSearch;
     int64_t nodesSearched;
 
-    alignas(64) NNUEdataAligned nnueStack[MAX_PLY + 32];
+    NNUEdataAligned* nnueStack = nullptr;
     void recordMoveNNUE(int nextPly, Move16 m, int movingPiece, int side, const UndoState& undo);
 
-    uint16_t killerMoves[MAX_PLY][2];
-    int history[2][64][64];
-    int captureHistory[64][64][6];
+    uint16_t (*killerMoves)[2] = nullptr;
+    int (*history)[64][64] = nullptr;
+    int (*captureHistory)[64][6] = nullptr;
 
     // --- Tekrar (repetition) tespiti ---
     static constexpr int MAX_GAME_KEYS = 1024;
-    std::vector<uint64_t> gameKeys;                       // UCI'dan gelen gecmis
-    uint64_t keyStack[MAX_GAME_KEYS + MAX_PLY + 16];      // gecmis + arama yolu
-    int      rootIndex = 0;                               // kokun keyStack indeksi
+    const uint64_t* gameKeysPtr = nullptr;                // zero-copy pointer to UCI history
+    size_t          gameKeysCount = 0;
+    uint64_t*       keyStack = nullptr;                   // gecmis + arama yolu (searchPool)
+    int             rootIndex = 0;                        // kokun keyStack indeksi
     bool isRepetition(const BoardState& board, int ply);
+
+    void initSearchPool();
 
     // Piece Values
     static constexpr int PAWN_VAL   = 100;

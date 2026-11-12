@@ -2,6 +2,7 @@
 
 #include <cstdint>
 #include <string>
+#include <string_view>
 #include <iostream>
 #include "MoveEncoding.h"
 
@@ -191,7 +192,7 @@ struct BoardState {
     int  colorOnSquare(int sq) const;   // returns Side or -1
 
     // --- FEN I/O ---
-    void setFromFEN(const std::string& fen);
+    void setFromFEN(std::string_view fen);
     std::string toFEN() const;
 
     // --- Debug display ---
